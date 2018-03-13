@@ -36,6 +36,23 @@ module pdp10(
 	reg key_repeat_bypass_sw;
 	reg [3:9] rdi_sel;
 
+
+	wire iobus_iob_reset;
+	wire iobus_iob_dr_split = 0;
+	wire [3:9] iobus_ios;
+	wire iobus_datao_clear;
+	wire iobus_datao_set;
+	wire iobus_cono_clear;
+	wire iobus_cono_set;
+	wire iobus_iob_datai;
+	wire iobus_iob_coni;
+	wire iobus_rdi_pulse;
+	wire iobus_rdi_data = 0;
+	wire [0:35] iobus_iob_out;
+	wire [1:7] iobus_pi = 0;
+	wire [0:35] iobus_iob_in = iobus_iob_out;
+
+
 	/* KA10 */
 	wire membus_rd_rq_p0;
 	wire membus_wr_rq_p0;
@@ -93,6 +110,21 @@ module pdp10(
 		.membus_mb_out(membus_mb_out_p0_p),
 		.membus_mb_in(membus_mb_in_p0),
 		.membus_fmc_select(membus_fmc_select_p0),
+
+		.iobus_iob_reset(iobus_iob_reset),
+		.iobus_iob_dr_split(iobus_iob_dr_split),
+		.iobus_ios(iobus_ios),
+		.iobus_datao_clear(iobus_datao_clear),
+		.iobus_datao_set(iobus_datao_set),
+		.iobus_cono_clear(iobus_cono_clear),
+		.iobus_cono_set(iobus_cono_set),
+		.iobus_iob_datai(iobus_iob_datai),
+		.iobus_iob_coni(iobus_iob_coni),
+		.iobus_rdi_pulse(iobus_rdi_pulse),
+		.iobus_rdi_data(iobus_rdi_data),
+		.iobus_iob_out(iobus_iob_out),
+		.iobus_pi(iobus_pi),
+		.iobus_iob_in(iobus_iob_in),
 
 
 		.fm_enable_sw(fm_enable_sw),
@@ -226,6 +258,7 @@ module test;
 		pdp10.mem0.core['o24] = 36'o262100_000000;
 		pdp10.mem0.core['o25] = 36'o267100_000000;
 		pdp10.mem0.core['o26] = 36'o145000_123456;
+		pdp10.mem0.core['o42] = 36'o265740_000000;
 		pdp10.mem0.core['o1002] = 36'o201000_000003;
 	end
 
@@ -244,6 +277,9 @@ module test;
 		#96 `TESTKEY = 1;
 //		pdp10.ka10.pi_act = 1;
 //		pdp10.ka10.pio = 7'b1111111;
+//		pdp10.ka10.cpa_clk_en = 1;
+//		pdp10.ka10.cpa_clk_flag = 1;
+//		pdp10.ka10.cpa_pia = 1;
 
 		#1200 `TESTKEY = 0;
 	end

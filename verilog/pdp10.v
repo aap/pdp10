@@ -237,11 +237,22 @@ module test;
 		#20 pdp10.sw_power = 1;
 	end
 
+	function [0:35] Inst;
+		input [0:8] op;
+		input [9:12] ac;
+		input i;
+		input [14:17] x;
+		input [18:35] y;
+		begin
+			Inst = { op, ac, i, x, y };
+		end
+	endfunction
+
 	initial begin: meminit
 		integer i;
+/*
 		for(i = 0; i < 'o40000; i = i + 1)
 			pdp10.mem0.core[i] = i + 36'o10000000;
-
 		for(i = 0; i < 'o20; i = i + 1) begin
 			pdp10.mem0.core[i] = i + 36'o1000;
 			pdp10.ka10.fmem[i] = i + 36'o1000;
@@ -249,7 +260,6 @@ module test;
 
 		pdp10.mem0.core[2] = 36'o001000_000123;
 		pdp10.ka10.fmem[2] = 36'o001000_000123;
-
 
 		pdp10.mem0.core['o20] = 36'o200121_000001;
 		pdp10.mem0.core['o21] = 36'o213121_000001;
@@ -260,6 +270,24 @@ module test;
 		pdp10.mem0.core['o26] = 36'o145000_123456;
 		pdp10.mem0.core['o42] = 36'o265740_000000;
 		pdp10.mem0.core['o1002] = 36'o201000_000003;
+*/
+
+		for(i = 0; i < 'o40000; i = i + 1)
+			pdp10.mem0.core[i] = 0;
+		for(i = 0; i < 'o20; i = i + 1) begin
+			pdp10.mem0.core[i] = 0;
+			pdp10.ka10.fmem[i] = 0;
+		end
+
+		pdp10.ka10.fmem[1] = 36'o123000_000321;
+		pdp10.ka10.fmem[2] = 36'o456000_000654;
+
+		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`MOVS, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`MOVN, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`MOVN, 2, 0, 0, 0);
+//		pdp10.mem0.core['o20] = Inst(`MOVM, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`MOVM, 1, 0, 0, 2);
 	end
 
 	initial begin
@@ -267,7 +295,7 @@ module test;
 		pdp10.ka10.ar = 1234;
 		pdp10.ka10.pc = 22;
 //		pdp10.as = 3;
-		pdp10.as = 'o26;
+		pdp10.as = 'o20;
 //		pdp10.as = 100000;
 //		pdp10.ds = 36'o1234;
 		pdp10.ds = 36'o777777777777;

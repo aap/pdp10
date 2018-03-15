@@ -566,6 +566,7 @@ module ka10(
 		ir_aobjp | ir_aobjn | ir_260_3 |
 		ir_idiv | ir_fsb | iot_blk |
 		ir_dfn | ir_fdv_NOT_l | ir_jffo;
+	wire e_long_OR_st_inh = e_long | st_inh;
 	wire et0;
 	wire et0_del, et0_dela;
 	wire et1;
@@ -594,11 +595,51 @@ module ka10(
 			e_uuof <= 0;
 			e_xctf <= 0;
 		end
+		if(et0 & ir_uuo)
+			e_uuof <= 1;
+		if(et0 & (ir_uuo | ir_xct) | key_rdi_done)
+			e_xctf <= 1;
 	end
 
 
 	/* S */
-	wire st1 = 0;
+	wire sce = ir_jsr | ir_uuo | ir_fwt_mem |
+		ir_fp_mem | ir_fp_both | ir_md_sce |
+		iot_datai | iot_coni | hwt_sce |
+		ir_boole & ir[7] & ~fce_pse |
+		db_byte_dep;
+	wire sar_ne_br = ir_push | ir_pushj | ir_pop |
+		ir_jsa | ir_exch | ir_dfn;
+	wire sac_2 = ir_ashc | ir_fp_long | ir_md_sac2 |
+		ir_lshc | ir_rotc;
+	wire sac_eq_0 = ir[9:12] == 0;
+	wire sac_inh = ir_md_sac_inh | db_byte_dep |
+		ir_fp_mem | ir_boole_mem | ir_fwt_mem | hwt_mem |
+		ir_cax | ir_jumpx | ir_txnx | ir_jsr | ir_254_7 | ir_uuo |
+		ir_iot | ir_as_mem | ir_ibp |
+		(ir_fwt_self | hwt_self | ir_skips) & sac_eq_0;
+	wire st_inh = // TODO: sr_op
+		ir_md | ir_fp | ir_blt | ir_iot | ir_fsc |
+		ir_ufa | byte_ptr_inc | byte_ptr_not_inc |
+		lb_byte_load | db_byte_dep | ir_jffo;
+	wire st0 = 0;
+	wire st1;
+	wire st1a = 0;
+	wire st2 = 0;
+	wire st5 = 0;
+	wire st6 = 0;
+	wire st6a = 0;
+	wire st7 = 0;
+	wire st8 = 0;
+	wire st9 = 0;
+
+	pa s_pa2(.clk(clk), .reset(reset),
+		.in(et2b_del & ~st_inh |
+		    et0_del & ~e_long_OR_st_inh |
+		    st0_D),
+		.p(st1));
+
+	wire st0_D = 0;
 
 
 	/* PI */
@@ -731,12 +772,6 @@ module ka10(
 
 	/* AR */
 	reg [0:35] ar;
-	reg ar_ov_flag;
-	reg ar_cry0_flag;
-	reg ar_cry1_flag;
-	reg ar_fov;
-	reg ar_fxu;
-	reg ar_dck;
 	wire ar_clr =	// this signal isn't explicitly named
 		// TODO
 		mc_rd_rq_pulse |
@@ -761,12 +796,14 @@ module ka10(
 		ft5 |
 		fmat1 & mc_rd;
 	wire ar_swap = ft6 | ft8;
-	wire arlt_fm_arrtJ = ar_swap;
-	wire arrt_fm_arltJ = ar_swap;
+	wire arlt_fm_arrtJ = ar_swap |
+		et0 & arlt_fm_arrt_et0;
+	wire arrt_fm_arltJ = ar_swap |
+		et0 & arrt_fm_alrt_et0;
 	wire arlt_fm_adJ = 0;
 	wire arrt_fm_adJ = at3 & af2;
-	wire ar_fm_ad0 = 0;
-	wire ar_fm_ad1 = 0;
+	wire ar_fm_ad0 = et0 & ar_fm_ad0_et0;
+	wire ar_fm_ad1 = et0 & ar_fm_ad1_et0;
 	wire arlt_fm_ad0 = arlt_fm_adJ | ar_fm_ad0;
 	wire arlt_fm_ad1 = arlt_fm_adJ | ar_fm_ad1;
 	wire arrt_fm_ad0 = arrt_fm_adJ | ar_fm_ad0;
@@ -779,16 +816,29 @@ module ka10(
 	wire arrt_fm_mq0 = ar_fm_mq0;
 	wire arrt_fm_mq1 = ar_fm_mq1;
 
+	wire ar_fm_adJ_et0 =
+		ir_as | ir_exch | ir_3xx | ir_aobjp | ir_aobjn | ir_push |
+		iot_blk | ir_jra | ir_movnx |
+		ar[0] & (ir_movmx | ir_idiv | ir_fdv_NOT_l) |
+		ir_dfn | ir_boole_0 | ir_boole_6 |
+		ir_boole_11 | ir_boole_12 | ir_boole_14;
+	wire ar_fm_ad0_et0 =
+		ar_fm_adJ_et0 |
+		ir_boole_1 | ir_boole_4 | ir_boole_13 | ir_boole_16;
+	wire ar_fm_ad1_et0 =
+		ar_fm_adJ_et0 |
+		ir_boole_2 | ir_boole_7 | ir_boole_10 | ir_boole_15 | ir_boole_17;
+	wire arlt_fm_arrt_et0 =
+		ir_movsx | ir_test_swap |
+		hwt_lt_fm_rt_et0 | iot_cono |
+		ir_blt | jffo_swap;
+	wire arrt_fm_alrt_et0 =
+		ir_movsx | ir_test_swap |
+		hwt_rt_fm_lt_et0 |
+		ir_blt | jffo_swap;
+
 	always @(posedge clk) begin: arctl
 		integer i;
-		if(mr_start) begin
-			ar_ov_flag = 0;
-			ar_cry0_flag = 0;
-			ar_cry1_flag = 0;
-			ar_fov = 0;
-			ar_fxu = 0;
-			ar_dck = 0;
-		end
 		if(arlt_clr)
 			ar[0:17] <= 0;
 		if(arrt_clr)
@@ -823,6 +873,38 @@ module ka10(
 			ar[0:17] <= ar[18:35];
 		if(arrt_fm_arltJ)
 			ar[18:35] <= ar[0:17];
+	end
+
+	/* ARF */
+	reg ar_ov_flag;
+	reg ar_cry0_flag;
+	reg ar_cry1_flag;
+	reg ar_fov;
+	reg ar_fxu;
+	reg ar_dck;
+	wire ar_ov_cond = ad_cry[0] ^ ad_cry[1];
+	wire ar0_XOR_ar1 = ar[0] ^ ar[1];
+	wire arf_flags_fm_brJ = et0 & ir_jrst & ir[11];
+	wire ar_jfcl_clr = et0 & ir_jfcl;
+	wire arf_cry_stb =
+		et0 & (ir_as | ir_3xx & ir[3] | ar_fm_adJ_et0 & ir_21x);
+	wire ar_ov_set = 0;
+
+	always @(posedge clk) begin
+		if(mr_start) begin
+			ar_ov_flag = 0;
+			ar_cry0_flag = 0;
+			ar_cry1_flag = 0;
+			ar_fov = 0;
+			ar_fxu = 0;
+			ar_dck = 0;
+		end
+		if(arf_cry_stb & ar_ov_cond | ar_ov_set)
+			ar_ov_flag <= 1;
+		if(arf_cry_stb & ad_cry[0])
+			ar_cry0_flag <= 1;
+		if(arf_cry_stb & ad_cry[1])
+			ar_cry1_flag <= 1;
 	end
 
 
@@ -867,15 +949,22 @@ module ka10(
 		ad_ar_m_en & ad_br_p_en |
 		ad_ar_m_en & ad_br_m_en |
 		ad_cry_36;
-	wire ad_ar_p_en_clr = 0;
-	wire ad_ar_m_en_clr = 0;
+	wire ad_ar_p_en_clr = ft9 & ~ad_ar_p_en_ft9;
 	wire ad_ar_p_en_set = mr_clr;
-	wire ad_ar_m_en_set = 0;
+	wire ad_ar_m_en_clr = 0;
+	wire ad_ar_m_en_set = ft9 & ad_ar_m_en_ft9;
+
 	wire ad_br_p_en_clr = at3;
+	wire ad_br_p_en_set = mr_clr | at4 |
+		ft9 & ad_br_p_en_ft9;
 	wire ad_br_m_en_clr = mr_clr;
-	wire ad_br_p_en_set = mr_clr | at4;
-	wire ad_br_m_en_set = 0;
+	wire ad_br_m_en_set = ft9 & ad_br_m_en_ft9;
+
 	wire ad_clr = mr_clr;	// TODO
+	wire ad_cry_ins_clr = et1 | st0;
+	wire ad_cry_ins_set = ft9 & ad_cry_ins_ft9;
+	wire ad_cry36_clr = 0;
+	wire ad_cry36_set = ft9 & ad_cry36_ft9;
 
 	wire [0:35] ad_cry_kill = {
 		5'b0, ~ad_cry_allow,
@@ -901,6 +990,33 @@ module ka10(
 		end
 	endgenerate
 
+	/* All crazy levels for FT9 */
+	wire ad_inc_both_ft9 = ir_aobjp | ir_aobjn |
+		ir_push | ir_pushj |
+		iot_blk | ir_blt;
+	wire ad_ar_negate_ft9 = ir_21x | ir_idiv | ir_fdv_NOT_l;
+	wire ad_minus_br_ft9 = ir_sub | ir_fsb | ir_cax | ir_dfn;
+	wire ad_br_pm_ft9 = ir_soxx | ir_pops | hwt_br_pm_en_ft9;
+	wire ad_ar_p_en_ft9 = ad_inc_both_ft9 |
+		ir_as | ir_3xx | ir_pops | ir_txcx |
+		byte_ptr_inc | ir_jffo;
+	wire ad_ar_m_en_ft9 = ad_ar_negate_ft9 |
+		ir_boole_6 | ir_boole_11 | ir_boole_12 | ir_boole_17 |
+		ir_div_OR_fdvl;
+	wire ad_br_p_en_ft9 = ad_br_pm_ft9 |
+		ir_add | ir_exch | ir_jsa | ir_jra | ir_txox | ir_hwt |
+		ir_xmul | ir_boole_1 | ir_boole_6 | ir_boole_7 | ir_boole_10 | ir_boole_16;
+	wire ad_br_m_en_ft9 = ad_br_pm_ft9 | ad_minus_br_ft9 |
+		ir_txcx | ir_txzx | ir_boole_2 | ir_boole_4 |
+		ir_boole_11 | ir_boole_13 | ir_boole_14 | ir_boole_15;
+	wire ad_cry_ins_ft9 = ir_boole_6 | ir_boole_11 | ir_txcx;
+	wire ad_cry36_ft9 = ad_inc_both_ft9 | ad_minus_br_ft9 |
+		ad_ar_negate_ft9 | ir_aoxx | byte_ptr_inc;
+
+	wire ad_br_p_only_en_et0 = hwt_e_long | ir_pops |
+		~e_long_OR_st_inh;
+
+
 	always @(posedge clk) begin
 		if(ad_clr) begin
 			ad_cry_ins <= 0;
@@ -908,6 +1024,22 @@ module ka10(
 			ad_m1_lh <= 0;
 			ad_cry_36 <= 0;
 		end
+		if(ad_cry_ins_clr)
+			ad_cry_ins <= 0;
+		if(ad_cry_ins_set)
+			ad_cry_ins <= 1;
+		if(ad_cry36_clr)
+			ad_cry_36 <= 0;
+		if(ad_cry36_set)
+			ad_cry_36 <= 1;
+		if(et0 & ~ir_blt | et2)
+			ad_p1_lh <= 0;
+		if(ft9 & ad_inc_both_ft9)
+			ad_p1_lh <= 1;
+		if(et0)
+			ad_m1_lh <= 0;
+		if(ft9 & ir_pops)
+			ad_m1_lh <= 1;
 		if(ad_ar_p_en_clr) ad_ar_p_en <= 0;
 		if(ad_ar_m_en_clr | ad_clr) ad_ar_m_en <= 0;
 		if(ad_ar_p_en_set) ad_ar_p_en <= 1;
@@ -1143,6 +1275,14 @@ module ka10(
 	wire hwt_self = ir_hwt & ir[7:8] == 3;
 	wire hwt_e_long = hwt_3_let & ir[6] & ~ir[7];
 	wire hwt_sce = hwt_mem & ir[4];
+	wire hwt_br_pm_en_ft9 = ir_hwt & ir[4];
+
+wire hwt_lt_fm_rt_et0 = 0;
+wire hwt_rt_fm_lt_et0 = 0;
+
+
+	/* JFFO */
+wire jffo_swap = 0;
 
 
 	/* BYTE */

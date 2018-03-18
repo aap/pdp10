@@ -229,7 +229,7 @@ module test;
 		pdp10.ds = 0;
 		pdp10.as = 0;
 
-		pdp10.fm_enable_sw = 1;
+		pdp10.fm_enable_sw = 0;
 		pdp10.key_repeat_bypass_sw = 0;
 		pdp10.rdi_sel = 4;
 
@@ -288,6 +288,9 @@ module test;
 		pdp10.ka10.fmem['o10] = 36'o000000_000000;
 		pdp10.ka10.fmem['o11] = 36'o000000_000001;
 		pdp10.ka10.fmem['o17] = 36'o000000_000300;
+		for(i = 0; i < 'o20; i = i + 1) begin
+			pdp10.mem0.core[i] = pdp10.ka10.fmem[i];
+		end
 
 		pdp10.mem0.core['o141] = 36'o000000000001;
 		pdp10.mem0.core['o142] = 36'o000000000002;
@@ -297,6 +300,7 @@ module test;
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`MOVS, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`MOVSS, 0, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`MOVN, 2, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`MOVN, 2, 0, 0, 0);
 //		pdp10.mem0.core['o20] = Inst(`MOVM, 2, 0, 0, 1);
@@ -321,14 +325,14 @@ module test;
 
 		// Misc tests
 //		pdp10.mem0.core['o20] = Inst('o034, 2, 0, 0, 1);
-//		pdp10.mem0.core['o20] = Inst(`EXCH, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`EXCH, 2, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`AOBJP, 4, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`AOBJP, 5, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`AOBJN, 4, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`AOBJN, 5, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`XCT, 0, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`PUSHJ, 'o17, 0, 0, 'o100);
-//		pdp10.mem0.core['o20] = Inst(`PUSH, 'o17, 0, 0, 'o200);
+		pdp10.mem0.core['o20] = Inst(`PUSH, 'o17, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`POP, 'o17, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`POPJ, 'o17, 0, 0, 'o200);
 
@@ -339,6 +343,7 @@ module test;
 
 		// Boole tests
 //		pdp10.mem0.core['o20] = Inst(`SETZ, 2, 0, 0, 1);
+//		pdp10.mem0.core['o20] = Inst(`SETZB, 2, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`AND, 2, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`ANDCA, 2, 0, 0, 1);
 //		pdp10.mem0.core['o20] = Inst(`SETM, 2, 0, 0, 1);
@@ -405,6 +410,8 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`SKIPA, 0, 0, 0, 'o7);
 //		pdp10.mem0.core['o20] = Inst(`AOSA, 0, 0, 0, 'o7);
 //		pdp10.mem0.core['o20] = Inst(`SOSA, 0, 0, 0, 'o7);
+
+//		pdp10.mem0.core['o20] = Inst(`LSHC, 1, 0, 0, 'o7);
 	end
 
 	initial begin

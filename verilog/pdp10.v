@@ -248,6 +248,17 @@ module test;
 		end
 	endfunction
 
+	function [0:35] IoInst;
+		input [10:12] op;
+		input [3:11] dev;
+		input i;
+		input [14:17] x;
+		input [18:35] y;
+		begin
+			IoInst = { 3'o7, dev[3:9], op, i, x, y };
+		end
+	endfunction
+
 	initial begin: meminit
 		integer i;
 /*
@@ -296,6 +307,11 @@ module test;
 		pdp10.mem0.core['o142] = 36'o000000000002;
 		pdp10.mem0.core['o200] = 36'o777740000100;
 		pdp10.mem0.core['o300] = 36'o123456111222;
+		pdp10.mem0.core['o002000] = 36'o006000001001;
+
+		// IO tests
+		pdp10.mem0.core['o20] = IoInst(`DATAO, 0, 0, 0, 'o002000);
+//		pdp10.mem0.core['o20] = IoInst(`DATAO, 0, 0, 0, 'o200);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);
@@ -332,7 +348,7 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`AOBJN, 5, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`XCT, 0, 0, 0, 'o100);
 //		pdp10.mem0.core['o20] = Inst(`PUSHJ, 'o17, 0, 0, 'o100);
-		pdp10.mem0.core['o20] = Inst(`PUSH, 'o17, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = Inst(`PUSH, 'o17, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`POP, 'o17, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`POPJ, 'o17, 0, 0, 'o200);
 

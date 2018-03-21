@@ -375,6 +375,25 @@ module ldly2us(input clk, input reset, input p, input l, output q, output ql);
 endmodule
 
 
+module ldly2_5us(input clk, input reset, input p, input l, output q, output ql);
+	reg [7:0] r;
+	wire t;
+	dcd dcd(.clk(clk), .reset(reset), .p(p), .l(l), .q(t));
+	always @(posedge clk or posedge reset) begin
+		if(reset)
+			r <= 0;
+		else begin
+			if(ql)
+				r <= r + 1;
+			if(t)
+				r <= -248;
+		end
+	end
+	assign ql = r != 0 | t;
+	assign q = (r != -8'b1) & (r != 0) | t;
+endmodule
+
+
 module ldly100us(input clk, input reset, input p, input l, output q, output ql);
 	reg [13:0] r;
 	wire t;

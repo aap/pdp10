@@ -76,4 +76,5 @@ genldlyus(0.2)	# only for testing
 genldlyus(1)
 genldlyus(1.5)
 genldlyus(2)
+genldlyus(2.5)
 genldlyus(100)

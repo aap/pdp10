@@ -369,3 +369,12 @@
 `define TSOA	9'o675
 `define TDON	9'o676
 `define TSON	9'o677
+
+`define BLKI	3'o0
+`define DATAI	3'o1
+`define BLKO	3'o2
+`define DATAO	3'o3
+`define CONO	3'o4
+`define CONI	3'o5
+`define CONSZ	3'o6
+`define CONSO	3'o7

@@ -105,7 +105,10 @@ module ka10(
 	assign iobus_iob_coni = iob_status;
 	assign iobus_rdi_pulse = iot_rdi_pulse;	// pulse
 //	input wire iobus_rdi_data,
-	assign iobus_iob_out = iob_fm_ar ? ar : 0;
+	assign iobus_iob_out = iob_fm_ar ? ar :
+		cpa_status ? cpa_iob :
+		pi_status ? pi_iob :
+		0;
 
 	wire [1:7] iob_pi = iobus_pi | {7{ cpa_req_enable}}&cpa_req;
 	wire [0:35] iob = iobus_iob_in | iobus_iob_out;
@@ -650,7 +653,7 @@ module ka10(
 	wire sar_ne_br_OR_sac2 = sar_ne_br | sac2;
 	wire sac_inh_OR_fm_en = sac_inh | mc_fm_en;
 	wire sce_OR_fce_pse = sce | fce_pse;
-	wire st0 = 0;
+	wire st0;
 	wire st1;
 	wire st1a;
 	wire st2;
@@ -661,6 +664,11 @@ module ka10(
 	wire st8;
 	wire st9;
 
+	pa s_pa1(.clk(clk), .reset(reset),
+		// TODO
+		.in(iot_t4 & ~iot_consx |
+		    iot_t5),
+		.p(st0));
 	pa s_pa2(.clk(clk), .reset(reset),
 		.in(et2b_del & ~st_inh |
 		    et0_del & ~e_long_OR_st_inh |
@@ -742,6 +750,7 @@ module ka10(
 	wire pi_rq = (pi_req != 0) & ~pi_cyc & ~key_pi_inh;
 	wire pi_data_io = iot_datao | iot_datai;
 	wire pi_sel = bio_pi_sel;
+	wire pi_status = pi_sel & iob_status;
 	// Accept (hold) PI request by any non-IO instruction or
 	// a DATA/BLK instruction in the first slot.
 	// If we don't but are in a PI cycle, we'll stay in there!
@@ -753,7 +762,13 @@ module ka10(
 		 pi_cyc & ~pi_ov & pi_data_io;
 	wire pi_ov_en = pi_cyc | key_rim;
 
-	wire pi_reset = mr_start;	// TODO
+	wire pi_reset =
+		mr_start |
+		iot_cono_clr & pi_sel & iob[23];
+	wire pi_cono_set = iot_cono_set & pi_sel;
+	wire pio_set = pi_cono_set & iob[25];
+	wire pio_clr = pi_cono_set & iob[26];
+	wire pir_fm_iob1 = pi_cono_set & iob[24];
 	wire pir_stb = mc_rq_pulse & ~pi_cyc;
 	wire pih_fm_pi_chrq = ft9 & pi_hold;
 	wire pi_ok_clrs_pih = et0 & pi_restore;
@@ -763,6 +778,10 @@ module ka10(
 	assign pi_enc[33] = pi_req[2] | pi_req[3] | pi_req[6] | pi_req[7];
 	assign pi_enc[34] = pi_req[1] | pi_req[3] | pi_req[5] | pi_req[7];
 
+	wire [18:35] pi_iob = {
+		cpa_pwr_fail, cpa_par_err, cpa_par_enb,
+		pih, pi_act, pio };
+
 	pa pi_pa0(.clk(clk), .reset(reset),
 		.in(it1 & pi_rq |
 		    st9 & pi_ov),
@@ -771,12 +790,16 @@ module ka10(
 	dly90ns pi_dly0(.clk(clk), .reset(reset), .in(pi_t0), .p(pi_t0_D));
 
 	always @(posedge clk) begin
-		if(mr_start | st1 & pi_hold) begin
+		if(mr_start) begin
 			pi_ov <= 0;
 			pi_cyc <= 0;
 		end
+		if(st1 & pi_hold)
+			pi_cyc <= 0;
 		if(pi_t0)
 			pi_cyc <= 1;
+		if(st1 & pi_hold | key_rdi_done)
+			pi_ov <= 0;
 		if(et0 & iot_blk & pi_ov_en & ad_cry[0])
 			pi_ov <= 1;
 		if(pi_reset) begin
@@ -786,12 +809,24 @@ module ka10(
 			pi_act <= 0;
 		end else if(pir_stb)
 			pir <= pir | iob_pi & pio;
+		else if(pir_fm_iob1)
+			pir <= pir | iob[29:35];
 		else
 			pir <= pir & ~pih;
 		if(pih_fm_pi_chrq)
 			pih <= pih | pi_req;
 		if(pi_ok_clrs_pih)
 			pih <= pih & ~pi_ok;
+		if(pi_cono_set) begin
+			if(iob[27] &  pi_act) pi_act <= 0;
+			if(iob[28] & ~pi_act) pi_act <= 1;
+		end
+		if(pio_clr & ~pio_set)
+			pio <= pio & ~iob[29:35];
+		if(~pio_clr & pio_set)
+			pio <= pio | iob[29:35];
+		if(pio_clr & pio_set)
+			pio <= pio ^ iob[29:35];
 	end
 
 
@@ -910,29 +945,60 @@ module ka10(
 		cpa_fov_en & ar_fov |
 		cpa_ar_ov_en & ar_ov_flag;
 	wire [1:7] cpa_req = { cpa_req_enable, 7'b0 } >> cpa_pia;
+	wire cpa_status = bio_cpa_sel & iob_status;
 
 	wire cpa_pdl_ov_set =
 		et0 & (ir_push | ir_pushj) & ad_cry[0] |
 		et0 & ir_pops & ~ad_cry[0];
+	wire cpa_cono_set = iot_cono_set & bio_cpa_sel;
 
+	wire [18:35] cpa_iob = {
+		1'b0, cpa_pdl_ov, ex_iot_user,
+		cpa_adr_break, cpa_mem_prot_flag, cpa_non_ex_mem,
+		1'b0, cpa_clk_en, cpa_clk_flag,
+		1'b0, cpa_fov_en, ar_fov,
+		ma_trap_offset, cpa_ar_ov_en, ar_ov_flag,
+		cpa_pia };
 
 	always @(posedge clk) begin
 		if(mr_start) begin
-			cpa_pwr_fail = 0;
-			cpa_adr_break = 0;
-			cpa_par_err = 0;
-			cpa_par_enb = 0;
-			cpa_pdl_ov = 0;
-			cpa_mem_prot_flag = 0;
-			cpa_non_ex_mem = 0;
-			cpa_clk_en = 0;
-			cpa_clk_flag = 0;
-			cpa_fov_en = 0;
-			cpa_ar_ov_en = 0;
-			cpa_pia = 0;
+			cpa_pwr_fail <= 0;
+			cpa_adr_break <= 0;
+			cpa_par_err <= 0;
+			cpa_par_enb <= 0;
+			cpa_pdl_ov <= 0;
+			cpa_mem_prot_flag <= 0;
+			cpa_non_ex_mem <= 0;
+			cpa_clk_en <= 0;
+			cpa_clk_flag <= 0;
+			cpa_fov_en <= 0;
+			cpa_ar_ov_en <= 0;
+			cpa_pia <= 0;
 		end
 		if(cpa_pdl_ov_set)
 			cpa_pdl_ov <= 1;
+		if(cpa_cono_set) begin
+			if(iob[18]) cpa_pdl_ov <= 0;
+			if(iob[21]) cpa_adr_break <= 0;
+			if(iob[22]) cpa_mem_prot_flag <= 0;
+			if(iob[23]) cpa_non_ex_mem <= 0;
+			if(iob[24] &  cpa_clk_en) cpa_clk_en <= 0;
+			if(iob[25] & ~cpa_clk_en) cpa_clk_en <= 1;
+			if(iob[26]) cpa_clk_flag <= 0;
+			if(iob[27] &  cpa_fov_en) cpa_fov_en <= 0;
+			if(iob[28] & ~cpa_fov_en) cpa_fov_en <= 1;
+			// AR FOV cleared in ARF
+			if(iob[30] &  cpa_ar_ov_en) cpa_ar_ov_en <= 0;
+			if(iob[31] & ~cpa_ar_ov_en) cpa_ar_ov_en <= 1;
+			// AR OV cleared in ARF
+			cpa_pia <= iob[33:35];
+		end
+		if(pi_cono_set) begin
+			if(iob[18]) cpa_pwr_fail <= 0;
+			if(iob[19]) cpa_par_err <= 0;
+			if(iob[20] &  cpa_par_enb) cpa_par_enb <= 0;
+			if(iob[21] & ~cpa_par_enb) cpa_par_enb <= 1;
+		end
 	end
 
 
@@ -955,8 +1021,8 @@ module ka10(
 		et1 & ir_idiv |
 		et0 & hwt_arrt_clr_et0;
 	wire ar_fm_ds1 =
-		// TODO
-		kt2 & key_dep_OR_dep_nxt_OR_exe;
+		kt2 & key_dep_OR_dep_nxt_OR_exe |
+		iot_t3 & bio_cpa_sel & iob_datai;
 	wire ar_fm_pcJ =
 		et0 & ar_fm_pcJ_et0 |
 		et1 & ir_jsa |
@@ -971,6 +1037,7 @@ module ka10(
 		ft3 & mc_fm_en |
 		ft5 |
 		fmat1 & mc_rd;
+	wire ar_fm_iob1 = iot_t3;
 	wire ar_swap = ft6 | ft8;
 	wire arlt_fm_arrtJ =
 		ar_swap |
@@ -1060,20 +1127,31 @@ module ka10(
 
 	always @(posedge clk) begin: arctl
 		integer i;
+		if(ar_fm_fm1)
+			ar <= ar | fm;
+		if(arlt_fm_ir1)
+			ar[0:12] <= ar[0:12] | ir[0:12];
+		if(ar_fm_iob1)
+			ar <= ar | iob;
+		if(ar_fm_ds1)
+			ar <= ar | ds;
 		if(arlt_clr)
 			ar[0:17] <= 0;
 		if(arrt_clr)
 			ar[18:35] <= 0;
-		if(ar_fm_ds1)
-			ar <= ar | ds;
-		if(arrt_fm_pcJ)
-			ar[18:35] <= pc;
-		if(arlt_fm_ir1)
-			ar[0:12] <= ar[0:12] | ir[0:12];
-		if(ar_fm_fm1)
-			ar <= ar | fm;
 		if({36{mc_rd}} & membus_pulse)
 			ar <= ar | membus_pulse;
+		if(arlt_fm_arrtJ)
+			ar[0:17] <= ar[18:35];
+		if(arrt_fm_arltJ)
+			ar[18:35] <= ar[0:17];
+		if(arlt_fm_flagsJ) begin
+			ar[0:6] = { ar_ov_flag, ar_cry0_flag, ar_cry1_flag, ar_fov,
+				byf6, ex_user, ex_iot_user };
+			ar[11:12] = { ar_fxu, ar_dck };
+		end
+		if(arrt_fm_pcJ)
+			ar[18:35] <= pc;
 		for(i = 0; i < 18; i = i+1) begin
 			if(arlt_fm_ad0 & ~ad[i])
 				ar[i] <= 0;
@@ -1091,15 +1169,6 @@ module ka10(
 				ar[i+18] <= 0;
 			if(arrt_fm_mq1 & mq[i+18])
 				ar[i+18] <= 1;
-		end
-		if(arlt_fm_arrtJ)
-			ar[0:17] <= ar[18:35];
-		if(arrt_fm_arltJ)
-			ar[18:35] <= ar[0:17];
-		if(arlt_fm_flagsJ) begin
-			ar[0:6] = { ar_ov_flag, ar_cry0_flag, ar_cry1_flag, ar_fov,
-				byf6, ex_user, ex_iot_user };
-			ar[11:12] = { ar_fxu, ar_dck };
 		end
 	end
 
@@ -1149,13 +1218,19 @@ module ka10(
 			ar_fxu <= br[11];
 			ar_dck <= br[12];
 		end
+		if(cpa_cono_set) begin
+			if(iob[29]) ar_fov <= 0;
+			if(iob[32]) ar_ov_flag <= 0;
+		end
 	end
 
 
 	/* BR */
 	reg [0:35] br;
-	wire br_fm_ar0 = br_fm_arJ |
-		et1 & ir_test;
+	wire br_fm_ar0 =
+		br_fm_arJ |
+		et1 & ir_test |
+		iot_t4 & iot_consx;
 	wire br_fm_ar1 = br_fm_arJ;
 	wire br_fm_arJ =
 		et0 & br_fm_arJ_et0 |
@@ -1222,7 +1297,9 @@ module ka10(
 		et1 & ir_test |
 		et2 & ~st_inh |
 		st0;
-	wire ad_ar_p_en_set = mr_clr;
+	wire ad_ar_p_en_set =
+		mr_clr |
+		et0 & ir_idiv;
 	wire ad_ar_m_en_clr =
 		et0 & ad_br_p_only_en_et0 |
 		et0 & ir_idiv |
@@ -1241,7 +1318,8 @@ module ka10(
 		et0 & ad_br_p_only_en_et0 |
 		et1 & ir_test |
 		et2 & ~st_inh |
-		st0;
+		st0 |
+		iot_t3;
 	wire ad_br_m_en_clr = mr_clr |
 		et0 & ad_br_p_only_en_et0 |
 		et1 & (ir_boole | ir_test) |
@@ -1350,7 +1428,8 @@ module ka10(
 
 	/* PC */
 	reg [18:35] pc;
-	wire pc_inc_inh = ir_xct | ir_uuo | iot_blk |
+	wire pc_inc_inh =
+		ir_xct | ir_uuo | iot_blk |
 		ir_blt | pi_cyc | key_pi_inh |
 		ir_134_7 & byf5;
 	wire pc_cond_p =
@@ -1378,7 +1457,9 @@ module ka10(
 		et0 & ir_cax & (pc_cond_p | pc_cond_q) |
 		et2 & pc_inc_et2 |
 		ft9 & ~pc_inc_inh |
-		knt2;
+		knt2 |
+		iot_t5 & (iot_conso & ~ad_eq_0 |
+		          iot_consz & ad_eq_0);
 
 	wire pc_set_et0 =
 		ir_aobjp & ~ad[0] |
@@ -1685,6 +1766,8 @@ wire jffo_f1 = 0;
 	wire iot_data_dly;
 	wire iot_reset_dly;
 	wire iot_data_xfer = iot_restart_dly | iot_data_dly;
+	// TODO: figure out what this does exactly
+	wire iob_bus_reset = iot_reset_dly & ~iot_data_dly;
 
 	wire iot_datao_clr;
 	wire iot_datao_set;
@@ -1727,7 +1810,8 @@ wire jffo_f1 = 0;
 		.in(iot_t3 & iot_cono),
 		.p(iot_cono_set));
 	pa iot_pa7(.clk(clk), .reset(reset),
-		.in(mr_start),	// TODO
+		.in(mr_start |
+		    cpa_cono_set & iob[19]),
 		.p(iot_reset));
 
 	wire iot_t4_D;

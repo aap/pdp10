@@ -310,8 +310,25 @@ module test;
 		pdp10.mem0.core['o002000] = 36'o006000001001;
 
 		// IO tests
-		pdp10.mem0.core['o20] = IoInst(`DATAO, 0, 0, 0, 'o002000);
+//		pdp10.mem0.core['o20] = IoInst(`DATAO, 0, 0, 0, 'o002000);
 //		pdp10.mem0.core['o20] = IoInst(`DATAO, 0, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = IoInst(`DATAI, 0, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 0, 0, 0, 'o777777);
+//		pdp10.mem0.core['o20] = IoInst(`CONI, 0, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o777777);
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o004177); // set PIR
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o002177); // set PIO
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o001177); // clr PIO
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o003107); // cmpl PIO
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o000400); // clr ACT
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o000200); // set ACT
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o000600); // cmpl ACT
+//		pdp10.mem0.core['o20] = IoInst(`CONO, 4, 0, 0, 'o740000); // CPA stuff
+//		pdp10.mem0.core['o20] = IoInst(`CONI, 4, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = IoInst(`CONSO, 0, 0, 0, 'o777);
+//		pdp10.mem0.core['o20] = IoInst(`CONSZ, 0, 0, 0, 'o777);
+//		pdp10.mem0.core['o20] = IoInst(`CONSO, 0, 0, 0, 0);
+//		pdp10.mem0.core['o20] = IoInst(`CONSZ, 0, 0, 0, 0);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);
@@ -428,6 +445,10 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`SOSA, 0, 0, 0, 'o7);
 
 //		pdp10.mem0.core['o20] = Inst(`LSHC, 1, 0, 0, 'o7);
+
+
+		pdp10.mem0.core['o21] = Inst(`JRST, 4, 0, 0, 'o20);
+		pdp10.mem0.core['o22] = Inst(`JRST, 4, 0, 0, 'o20);
 	end
 
 	initial begin
@@ -437,8 +458,8 @@ module test;
 //		pdp10.as = 3;
 		pdp10.as = 'o20;
 //		pdp10.as = 100000;
-//		pdp10.ds = 36'o1234;
-		pdp10.ds = 36'o777777777777;
+		pdp10.ds = 36'o102030_405060;
+//		pdp10.ds = 36'o777777777777;
 //		pdp10.key_repeat_sw = 1;
 //		pdp10.key_adr_stop = 1;
 

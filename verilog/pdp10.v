@@ -34,6 +34,7 @@ module pdp10(
 
 	reg fm_enable_sw;
 	reg key_repeat_bypass_sw;
+	reg mi_prog_dis_sw;
 	reg [3:9] rdi_sel;
 
 
@@ -129,6 +130,7 @@ module pdp10(
 
 		.fm_enable_sw(fm_enable_sw),
 		.key_repeat_bypass_sw(key_repeat_bypass_sw),
+		.mi_prog_dis_sw(mi_prog_dis_sw),
 		.rdi_sel(rdi_sel)
 	);
 
@@ -229,8 +231,9 @@ module test;
 		pdp10.ds = 0;
 		pdp10.as = 0;
 
-		pdp10.fm_enable_sw = 0;
+		pdp10.fm_enable_sw = 1;
 		pdp10.key_repeat_bypass_sw = 0;
+		pdp10.mi_prog_dis_sw = 0;
 		pdp10.rdi_sel = 4;
 
 		pdp10.sw_power = 0;
@@ -261,27 +264,6 @@ module test;
 
 	initial begin: meminit
 		integer i;
-/*
-		for(i = 0; i < 'o40000; i = i + 1)
-			pdp10.mem0.core[i] = i + 36'o10000000;
-		for(i = 0; i < 'o20; i = i + 1) begin
-			pdp10.mem0.core[i] = i + 36'o1000;
-			pdp10.ka10.fmem[i] = i + 36'o1000;
-		end
-
-		pdp10.mem0.core[2] = 36'o001000_000123;
-		pdp10.ka10.fmem[2] = 36'o001000_000123;
-
-		pdp10.mem0.core['o20] = 36'o200121_000001;
-		pdp10.mem0.core['o21] = 36'o213121_000001;
-		pdp10.mem0.core['o22] = 36'o202121_000001;
-		pdp10.mem0.core['o23] = 36'o244100_000000;
-		pdp10.mem0.core['o24] = 36'o262100_000000;
-		pdp10.mem0.core['o25] = 36'o267100_000000;
-		pdp10.mem0.core['o26] = 36'o145000_123456;
-		pdp10.mem0.core['o42] = 36'o265740_000000;
-		pdp10.mem0.core['o1002] = 36'o201000_000003;
-*/
 
 		for(i = 0; i < 'o40000; i = i + 1)
 			pdp10.mem0.core[i] = 0;
@@ -306,6 +288,7 @@ module test;
 		pdp10.mem0.core['o141] = 36'o000000000001;
 		pdp10.mem0.core['o142] = 36'o000000000002;
 		pdp10.mem0.core['o200] = 36'o777740000100;
+		pdp10.mem0.core['o201] = 36'o777776_000277;
 		pdp10.mem0.core['o300] = 36'o123456111222;
 		pdp10.mem0.core['o002000] = 36'o006000001001;
 
@@ -329,6 +312,8 @@ module test;
 //		pdp10.mem0.core['o20] = IoInst(`CONSZ, 0, 0, 0, 'o777);
 //		pdp10.mem0.core['o20] = IoInst(`CONSO, 0, 0, 0, 0);
 //		pdp10.mem0.core['o20] = IoInst(`CONSZ, 0, 0, 0, 0);
+//		pdp10.mem0.core['o20] = IoInst(`DATAO, 4, 0, 0, 'o300);
+		pdp10.mem0.core['o20] = IoInst(`BLKO, 4, 0, 0, 'o201);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);

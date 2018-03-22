@@ -65,7 +65,7 @@ module ka10(
 	// shift cntr maint
 	input fm_enable_sw,
 	input key_repeat_bypass_sw,
-	// mi prog dis
+	input mi_prog_dis_sw,
 	input wire [3:9] rdi_sel
 );
 
@@ -427,7 +427,8 @@ module ka10(
 		.p(at2));
 	pa a_pa3(.clk(clk), .reset(reset),
 		.in(at2_D |
-		    it1 & ~pi_rq & ir[14:17] == 0),
+		    it1 & ~pi_rq & ir[14:17] == 0 |
+		    iot_t1),
 		.p(at3));
 	pa a_pa4(.clk(clk), .reset(reset),
 		.in(at3_D & ir[13]),
@@ -1455,6 +1456,7 @@ module ka10(
 		// TODO
 		et0 & ir_skips & (pc_cond_p | pc_cond_r) |
 		et0 & ir_cax & (pc_cond_p | pc_cond_q) |
+		et0 & iot_blk & ~pi_cyc & ~ad_cry[0] |
 		et2 & pc_inc_et2 |
 		ft9 & ~pc_inc_inh |
 		knt2 |
@@ -1853,6 +1855,50 @@ wire jffo_f1 = 0;
 			sc_stop <= 0;
 	end
 
+
+	/* MI */
+	reg [0:35] mi;
+	reg mi_prog;
+	wire mi_prog_en = bio_pi_sel & ~mi_prog_dis_sw;
+	wire mi_load;
+	wire mit0;
+	wire mit1;
+
+	pa mi_pa1(.clk(clk), .reset(reset),
+		.in(mc_rst1 & key_f1 |
+		    iot_datao_set & mi_prog_en |
+		    mit1 & ~mi_prog),
+		.p(mi_load));
+	pa mi_pa2(.clk(clk), .reset(reset),
+		.in(mc_rst0 & as_cond & mc_rd |
+		    ar_fm_fm1 & as_eq_fma),
+		.p(mit0));
+	pa mi_pa3(.clk(clk), .reset(reset),
+		.in(mit0_D |
+		    st1 & as_eq_fma & ~sac_inh |
+		    st8 & as_eq_fma |
+		    mc_rst0 & as_cond & ~mc_rd),
+		.p(mit1));
+
+	wire mit0_D;
+	pa mi_dly1(.clk(clk), .reset(reset), .in(mit0), .p(mit0_D));
+
+	always @(posedge clk) begin
+		if(mr_pwr_clr)
+			mi <= 0;
+		if(mi_load)
+			mi <= ar;
+		// TODO: figure out what the level inputs do exactly
+		if(mr_start | key_f1 | mi_prog_dis_sw)
+			mi_prog <= 0;
+		if(iot_datao_set & mi_prog_en)
+			mi_prog <= 1;
+	end
+
+	/* AS */
+	wire as_eq_fma = as == { 14'b0, fma };
+	wire as_eq_rla = as[18:25] == mai[18:25] & as[26:35] == ma[26:35];
+	wire as_cond = as_eq_rla & ~mai_fma_sel | as_eq_fma & mai_fma_sel;
 
 	/* MA */
 	reg [18:35] ma;

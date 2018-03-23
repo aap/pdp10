@@ -521,7 +521,8 @@ module ka10(
 		    mc_rst1 & ff4),
 		.p(ft4a));
 	pa f_pa9(.clk(clk), .reset(reset),
-		.in(ft3_D & fcc_aclt),
+		.in(ft3_D & fcc_aclt |
+		    blt_t3_D & ~pi_rq),
 		.p(ft6));
 	pa f_pa10(.clk(clk), .reset(reset),
 		.in(ft3_D & fcc_acrt |
@@ -668,7 +669,8 @@ module ka10(
 	pa s_pa1(.clk(clk), .reset(reset),
 		// TODO
 		.in(iot_t4 & ~iot_consx |
-		    iot_t5),
+		    iot_t5 |
+		    blt_t3 & pi_rq),
 		.p(st0));
 	pa s_pa2(.clk(clk), .reset(reset),
 		.in(et2b_del & ~st_inh |
@@ -678,7 +680,8 @@ module ka10(
 	pa s_pa3(.clk(clk), .reset(reset),
 		// TODO
 		.in(st1 & ex_pi_sync & sac_inh_OR_fm_en &
-		          ~sce_OR_fce_pse & ~sar_ne_br_OR_sac2),
+		          ~sce_OR_fce_pse & ~sar_ne_br_OR_sac2 |
+		    blt_t2),
 		.p(st1a));
 	pa s_pa4(.clk(clk), .reset(reset),
 		.in(mc_rst1 & sf1 |
@@ -1016,7 +1019,8 @@ module ka10(
 		ar_clr |
 		et0 & hwt_arlt_clr_et0 |
 		et1 & ir_idiv |
-		at3;
+		at3 |
+		blt_t1;
 	wire arrt_clr =
 		ar_clr |
 		et1 & ir_idiv |
@@ -1073,7 +1077,10 @@ module ka10(
 	wire arlt_fm_ad1 = arlt_fm_adJ | ar_fm_ad1;
 	wire arrt_fm_ad0 = arrt_fm_adJ | ar_fm_ad0;
 	wire arrt_fm_ad1 = arrt_fm_adJ | ar_fm_ad1;
-	wire ar_fm_mqJ = ft4a | st7;	// TODO
+	wire ar_fm_mqJ =
+		st7 |
+		blt_t3 |
+		ft4a;
 	wire ar_fm_mq0 =
 		ar_fm_mqJ |
 		et0 & ir_pops |
@@ -1086,8 +1093,8 @@ module ka10(
 		et2 & ar_fm_mqJ_et2;
 	wire arlt_fm_mq0 = ar_fm_mq0;
 	wire arlt_fm_mq1 = ar_fm_mq1;
-	wire arrt_fm_mq0 = ar_fm_mq0;
-	wire arrt_fm_mq1 = ar_fm_mq1;
+	wire arrt_fm_mq0 = ar_fm_mq0 | blt_t1;
+	wire arrt_fm_mq1 = ar_fm_mq1 | blt_t1;
 
 	wire ar_fm_adJ_et0 =
 		ir_as | ir_exch | ir_3xx | ir_aobjp | ir_aobjn | ir_push |
@@ -1321,12 +1328,16 @@ module ka10(
 		et2 & ~st_inh |
 		st0 |
 		iot_t3;
-	wire ad_br_m_en_clr = mr_clr |
+	wire ad_br_m_en_clr =
+		mr_clr |
 		et0 & ad_br_p_only_en_et0 |
 		et1 & (ir_boole | ir_test) |
 		et2 & ~st_inh |
-		st0;
-	wire ad_br_m_en_set = ft9 & ad_br_m_en_ft9;
+		st0 |
+		blt_t3;
+	wire ad_br_m_en_set =
+		ft9 & ad_br_m_en_ft9 |
+		blt_t1;
 
 	wire ad_clr = mr_clr;	// TODO
 	wire ad_cry_ins_clr = et1 | st0;
@@ -1334,7 +1345,8 @@ module ka10(
 	wire ad_cry36_clr =
 		et0 & (ir_idiv | ad_br_p_only_en_et0) |
 		et2 & ~st_inh |
-		st0;
+		st0 |
+		blt_t1;
 	wire ad_cry36_set =
 		ft9 & ad_cry36_ft9 |
 		et1 & jffo_f1;
@@ -1453,7 +1465,6 @@ module ka10(
 		knt3 |
 		kt3 & key_start;
 	wire pc_inc =
-		// TODO
 		et0 & ir_skips & (pc_cond_p | pc_cond_r) |
 		et0 & ir_cax & (pc_cond_p | pc_cond_q) |
 		et0 & iot_blk & ~pi_cyc & ~ad_cry[0] |
@@ -1461,7 +1472,8 @@ module ka10(
 		ft9 & ~pc_inc_inh |
 		knt2 |
 		iot_t5 & (iot_conso & ~ad_eq_0 |
-		          iot_consz & ad_eq_0);
+		          iot_consz & ad_eq_0) |
+		blt_t2;
 
 	wire pc_set_et0 =
 		ir_aobjp & ~ad[0] |
@@ -1724,6 +1736,33 @@ module ka10(
 wire jffo_swap = 0;
 wire jffo_f1 = 0;
 
+
+	/* BLT */
+	reg bltf1;
+	wire blt_t1;
+	wire blt_t2;
+	wire blt_t3;
+
+	pa blt_pa1(.clk(clk), .reset(reset),
+		.in(mc_rst1 & bltf1),
+		.p(blt_t1));
+	pa blt_pa2(.clk(clk), .reset(reset),
+		.in(blt_t1_D & ~ad[17]),
+		.p(blt_t2));
+	pa blt_pa3(.clk(clk), .reset(reset),
+		.in(blt_t1_D & ad[17]),
+		.p(blt_t3));
+
+	wire blt_t1_D, blt_t3_D;
+	dly265ns blt_dly1(.clk(clk), .reset(reset), .in(blt_t1), .p(blt_t1_D));
+	dly90ns blt_dly3(.clk(clk), .reset(reset), .in(blt_t3), .p(blt_t3_D));
+
+	always @(posedge clk) begin
+		if(mr_clr | blt_t1)
+			bltf1 <= 0;
+		if(et2 & ir_blt)
+			bltf1 <= 1;
+	end
 
 	/* BYTE */
 	reg byf4, byf5, byf6;

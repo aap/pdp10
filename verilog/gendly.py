@@ -34,6 +34,7 @@ gendlyns(115)
 gendlyns(140)
 gendlyns(150)
 gendlyns(165)
+gendlyns(170)
 gendlyns(190)
 gendlyns(200)	# system module
 gendlyns(215)

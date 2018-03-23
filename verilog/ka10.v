@@ -670,7 +670,9 @@ module ka10(
 		// TODO
 		.in(iot_t4 & ~iot_consx |
 		    iot_t5 |
-		    blt_t3 & pi_rq),
+		    blt_t3 & pi_rq |
+		    et2 & ir_jffo & ~jffo_cycle |
+		    jffo_t1_del & ~jffo_cycle),
 		.p(st0));
 	pa s_pa2(.clk(clk), .reset(reset),
 		.in(et2b_del & ~st_inh |
@@ -1006,6 +1008,46 @@ module ka10(
 	end
 
 
+	/* MQ */
+	reg [0:35] mq;
+	wire mq_clr = mr_clr | ft6;
+	wire mq_fm_adJ =
+		et0 & mq_fm_adJ_et0 |
+		et1 & (ir_idiv | jffo_f1) |
+		et2 & ir_blt |
+		ft4 | ft7 | ft4a;
+	wire mq_sh_lt =
+		et2 & ir_idiv |
+		jffo_t1;
+	wire mq_sh_rt = 0;
+
+	wire mq_fm_adJ_et0 = ir_pops | ir_pushj;
+
+	always @(posedge clk) begin
+		if(mq_clr)
+			mq <= 0;
+		if(mq_fm_adJ)
+			mq <= ad;
+		if(et0 & jffo_swap) begin
+			mq[31] <= 1;
+			mq[34] <= 1;
+		end
+		if(mq_sh_lt)
+			mq <= { mq0_sh_lt_inp, mq[2:7],
+				mq7_sh_lt_inp, mq[9:35],
+				mq35_sh_lt_inp };
+	end
+
+	/* AR-MQ shift connections */
+	wire armq_fp_sh_en = ir_fp | ir_ufa | ir_fsc;
+	wire armq_byte_mask = byte_ptr_inc | byte_ptr_not_inc;
+
+	wire mq0_sh_lt_inp = mq[1] & ~ir_ashc | ad[0] & ir_ashc;
+	wire mq7_sh_lt_inp = mq[8] & ~armq_fp_sh_en;
+	// TODO:
+	wire mq35_sh_lt_inp = armq_byte_mask | ad[0] /*& ir_rotc | ~ad[0] & dsf1*/;
+
+
 	/* AR */
 	reg [0:35] ar;
 	wire ar_clr =	// this signal isn't explicitly named
@@ -1064,7 +1106,8 @@ module ka10(
 		ar_fm_adJ |
 		et0 & arrt_fm_adJ_et0 |
 		et1 & arrt_fm_adJ_et1 |
-		at3 & af2;
+		at3 & af2 |
+		jffo_t1;
 	wire ar_fm_ad0 =
 		et0 & ar_fm_ad0_et0 |
 		et1 & ar_fm_ad0_et1 |
@@ -1259,25 +1302,6 @@ module ka10(
 			if(br_fm_ar1 & ar[i])
 				br[i] <= 1;
 		end
-	end
-
-
-	/* MQ */
-	reg [0:35] mq;
-	wire mq_clr = mr_clr | ft6;
-	wire mq_fm_adJ =
-		et0 & mq_fm_adJ_et0 |
-		et1 & (ir_idiv | jffo_f1) |
-		et2 & ir_blt |
-		ft4 | ft7 | ft4a;
-
-	wire mq_fm_adJ_et0 = ir_pops | ir_pushj;
-
-	always @(posedge clk) begin
-		if(mq_clr)
-			mq <= 0;
-		if(mq_fm_adJ)
-			mq <= ad;
 	end
 
 
@@ -1733,8 +1757,24 @@ module ka10(
 
 
 	/* JFFO */
-wire jffo_swap = 0;
-wire jffo_f1 = 0;
+	reg jffo_f1;
+	wire jffo_swap = ir_jffo & ad[0:17] == 0;
+	wire jffo_t1;
+	wire jffo_t1_del;
+	wire jffo_cycle = jffo_f1 & ~mq[0];
+
+	pa jffo_pa1(.clk(clk), .reset(reset),
+		.in((et2b_del | jffo_t1_del) & jffo_cycle),
+		.p(jffo_t1));
+
+	dly170ns jffo_dly1(.clk(clk), .reset(reset), .in(jffo_t1), .p(jffo_t1_del));
+
+	always @(posedge clk) begin
+		if(mr_clr)
+			jffo_f1 <= 0;
+		if(et0 & ir_jffo & ~ad_eq_0)
+			jffo_f1 <= 1;
+	end
 
 
 	/* BLT */

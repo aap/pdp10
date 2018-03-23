@@ -316,7 +316,10 @@ module test;
 //		pdp10.mem0.core['o20] = IoInst(`DATAO, 4, 0, 0, 'o300);
 //		pdp10.mem0.core['o20] = IoInst(`BLKO, 4, 0, 0, 'o201);
 
-		pdp10.mem0.core['o20] = Inst(`BLT, 'o16, 0, 0, 'o403);
+//		pdp10.mem0.core['o20] = Inst(`BLT, 'o16, 0, 0, 'o403);
+//		pdp10.mem0.core['o20] = Inst(`JFFO, 0, 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = Inst(`JFFO, 'o3, 0, 0, 'o200);
+		pdp10.mem0.core['o20] = Inst(`JFFO, 'o11 , 0, 0, 'o200);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);
@@ -437,6 +440,7 @@ module test;
 
 		pdp10.mem0.core['o21] = Inst(`JRST, 4, 0, 0, 'o20);
 		pdp10.mem0.core['o22] = Inst(`JRST, 4, 0, 0, 'o20);
+		pdp10.mem0.core['o200] = Inst(`JRST, 4, 0, 0, 'o20);
 	end
 
 	initial begin

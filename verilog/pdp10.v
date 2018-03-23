@@ -283,6 +283,8 @@ module test;
 		pdp10.ka10.fmem['o7] = 36'o777777_777777;
 		pdp10.ka10.fmem['o10] = 36'o000000_000000;
 		pdp10.ka10.fmem['o11] = 36'o000000_000001;
+		pdp10.ka10.fmem['o14] = 36'o010700_000300;
+		pdp10.ka10.fmem['o15] = 36'o300600_000300;
 		pdp10.ka10.fmem['o16] = 36'o000001_000400;
 		pdp10.ka10.fmem['o17] = 36'o000000_000300;
 		for(i = 0; i < 'o20; i = i + 1) begin
@@ -324,6 +326,13 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`JFFO, 'o3, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`JFFO, 'o11 , 0, 0, 'o200);
 
+		// Byte tests
+//		pdp10.mem0.core['o20] = Inst(`IBP, 0, 0, 0, 'o14);
+//		pdp10.mem0.core['o20] = Inst(`IBP, 0, 0, 0, 'o15);
+//		pdp10.mem0.core['o20] = Inst(`LDB, 0, 0, 0, 'o15);
+//		pdp10.mem0.core['o20] = Inst(`ILDB, 0, 0, 0, 'o15);
+		pdp10.mem0.core['o20] = Inst(`IDPB, 'o1, 0, 0, 'o15);
+
 		// Shift tests
 //		pdp10.mem0.core['o20] = Inst(`ASH, 2, 0, 0, 'o3);
 //		pdp10.mem0.core['o20] = Inst(`ASH, 2, 0, 0, -'o3);
@@ -336,7 +345,7 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`LSHC, 2, 0, 0, 'o3);
 //		pdp10.mem0.core['o20] = Inst(`LSHC, 2, 0, 0, -'o3);
 //		pdp10.mem0.core['o20] = Inst(`ROTC, 2, 0, 0, 'o3);
-		pdp10.mem0.core['o20] = Inst(`ROTC, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`ROTC, 2, 0, 0, -'o3);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);

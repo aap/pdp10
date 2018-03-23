@@ -32,6 +32,7 @@ module pdp10(
 	reg [0:35] ds;
 	reg [18:35] as;
 
+	reg sc_stop_sw;
 	reg fm_enable_sw;
 	reg key_repeat_bypass_sw;
 	reg mi_prog_dis_sw;
@@ -128,6 +129,7 @@ module pdp10(
 		.iobus_iob_in(iobus_iob_in),
 
 
+		.sc_stop_sw(sc_stop_sw),
 		.fm_enable_sw(fm_enable_sw),
 		.key_repeat_bypass_sw(key_repeat_bypass_sw),
 		.mi_prog_dis_sw(mi_prog_dis_sw),
@@ -231,6 +233,7 @@ module test;
 		pdp10.ds = 0;
 		pdp10.as = 0;
 
+		pdp10.sc_stop_sw = 0;
 		pdp10.fm_enable_sw = 1;
 		pdp10.key_repeat_bypass_sw = 0;
 		pdp10.mi_prog_dis_sw = 0;
@@ -319,7 +322,21 @@ module test;
 //		pdp10.mem0.core['o20] = Inst(`BLT, 'o16, 0, 0, 'o403);
 //		pdp10.mem0.core['o20] = Inst(`JFFO, 0, 0, 0, 'o200);
 //		pdp10.mem0.core['o20] = Inst(`JFFO, 'o3, 0, 0, 'o200);
-		pdp10.mem0.core['o20] = Inst(`JFFO, 'o11 , 0, 0, 'o200);
+//		pdp10.mem0.core['o20] = Inst(`JFFO, 'o11 , 0, 0, 'o200);
+
+		// Shift tests
+//		pdp10.mem0.core['o20] = Inst(`ASH, 2, 0, 0, 'o3);
+//		pdp10.mem0.core['o20] = Inst(`ASH, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`LSH, 2, 0, 0, 'o3);
+//		pdp10.mem0.core['o20] = Inst(`LSH, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`ROT, 2, 0, 0, 'o3);
+//		pdp10.mem0.core['o20] = Inst(`ROT, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`ASHC, 2, 0, 0, 'o3);
+//		pdp10.mem0.core['o20] = Inst(`ASHC, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`LSHC, 2, 0, 0, 'o3);
+//		pdp10.mem0.core['o20] = Inst(`LSHC, 2, 0, 0, -'o3);
+//		pdp10.mem0.core['o20] = Inst(`ROTC, 2, 0, 0, 'o3);
+		pdp10.mem0.core['o20] = Inst(`ROTC, 2, 0, 0, -'o3);
 
 		// FWT tests
 //		pdp10.mem0.core['o20] = Inst(`MOVE, 2, 0, 0, 1);

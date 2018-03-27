@@ -266,7 +266,8 @@ module test;
 	endfunction
 
 //`include "test.inc"
-`include "test_arith.inc"
+//`include "test_arith.inc"
+`include "test_fp.inc"
 
 	initial begin
 		pdp10.ka10.ma = 3;

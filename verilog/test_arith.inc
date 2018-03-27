@@ -18,10 +18,10 @@ initial begin: meminit
 //	pdp10.ka10.fmem['o11] = 36'o400000000000;
 
 //	pdp10.ka10.fmem['o0] = -36'o1;
-	pdp10.ka10.fmem['o1] = 36'o44;
-	pdp10.ka10.fmem['o10] = 36'o5;
-//	pdp10.ka10.fmem['o1] = 36'o56;
-//	pdp10.ka10.fmem['o10] = 36'o23;
+//	pdp10.ka10.fmem['o1] = 36'o44;
+//	pdp10.ka10.fmem['o10] = 36'o5;
+	pdp10.ka10.fmem['o1] = 36'o56;
+	pdp10.ka10.fmem['o10] = 36'o23;
 
 	for(i = 0; i < 'o20; i = i + 1) begin
 		pdp10.mem0.core[i] = pdp10.ka10.fmem[i];

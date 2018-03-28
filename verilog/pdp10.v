@@ -74,7 +74,7 @@ module pdp10(
 	wire [0:35] membus_mb_in_p0 = membus_mb_out_p0_p | membus_mb_out_p0_0;
 
 	ka10 ka10(
-		.clk(clk), 
+		.clk(clk),
 		.reset(reset),
 		.sw_power(sw_power),
 		.key_stop_sw(key_stop_sw),

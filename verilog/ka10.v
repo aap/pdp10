@@ -207,9 +207,9 @@ module ka10(
 		.p3(key_done), .l3(~key_rept_sync),
 		.p4(~key_rept_dly), .l4(~key_rept_sync),
 		.q(key_fcn_clr));
-	pa_dcd key_pa2(.clk(clk), .reset(reset), 
+	pa_dcd key_pa2(.clk(clk), .reset(reset),
 		.p(~key_manual_D),
-		.l(~key_rept_sync), 
+		.l(~key_rept_sync),
 		.q(key_fcn_strobe));
 	pa_dcd2 key_pa3(.clk(clk), .reset(reset),
 		.p1(~key_fcn_strobe_D), .l1(1'b1),
@@ -263,8 +263,8 @@ module ka10(
 		.p1(key_stop_sw), .l1(1'b1),
 		.p2(kt0), .l2(key_reset & run),
 		.q(kst1));
-	pa_dcd key_pa18(.clk(clk), .reset(reset), 
-		.p(~key_at_inh), .l(key_reset), 
+	pa_dcd key_pa18(.clk(clk), .reset(reset),
+		.p(~key_at_inh), .l(key_reset),
 		.q(kst2));
 
 	wire key_manual_D;
@@ -274,7 +274,7 @@ module ka10(
 	wire kct0_D;
 	wire kst1_D;
 	// SIM: this delay is 30ms really, to debounce the keys
-	ldly0_2us key_dly1(.clk(clk), .reset(reset), 
+	ldly0_2us key_dly1(.clk(clk), .reset(reset),
 		.p(key_manual), .l(1'b1),
 		.q(key_manual_D));
 	ldly1us key_dly2(.clk(clk), .reset(reset),
@@ -1064,6 +1064,8 @@ module ka10(
 			mq <= { mq0_sh_rt_inp,
 				mq1_sh_rt_inp, mq[1:6],
 				mq8_sh_rt_inp, mq[8:34] };
+		if(fmt3)
+			mq[35] <= 0;
 	end
 
 	/* AR-MQ shift connections */
@@ -1163,7 +1165,8 @@ module ka10(
 		dst3 |
 		dst4 & ~mq[35] |
 		div_t5 & dsf7_XOR_br0 |
-		nrt7;
+		nrt7 |
+		fmt3;
 	wire arlt_fm_adJ =
 		ar_fm_adJ |
 		et0 & arlt_fm_adJ_et0 |
@@ -1219,7 +1222,9 @@ module ka10(
 		et1 & ir_dfn |
 		nrt5 |
 		nlt3 & ad[9:35] != 0;
-	wire ar1_8_fm_ar0J = et1 & ir_fsc;
+	wire ar1_8_fm_ar0J =
+		et1 & ir_fsc |
+		fpt3;
 	wire ari_dfn_clr = ir_dfn & ~scad[0];
 	wire ari_dfn_set = ir_dfn & scad[0];
 
@@ -1313,7 +1318,7 @@ module ka10(
 		if(ar0_5_fm_scad3_8J)
 			ar[0:5] = scad[3:8];
 		if(ar1_8_fm_scad1_8J) begin
-			ar[1:8] <= scad[1:8];	
+			ar[1:8] <= scad[1:8];
 			if(ari_dfn_clr)
 				ar[0] <= 0;
 			if(ari_dfn_set)
@@ -1410,6 +1415,8 @@ module ka10(
 		ft1a & ~ir_jrst |
 		dbt2 |
 		mst0;
+	wire br1_8_clr = fpt3 & ~br[0];
+	wire br1_8_set = fpt3 & br[0];
 
 	wire br_fm_arJ_et0 = ir_jsa | ir_exch | ir_fsb |
 		hwt_e_long | ir_dfn | ir_fsc;
@@ -1423,6 +1430,10 @@ module ka10(
 			if(br_fm_ar1 & ar[i])
 				br[i] <= 1;
 		end
+		if(br1_8_clr)
+			br[1:8] <= 0;
+		if(br1_8_set)
+			br[1:8] <= 8'o377;
 	end
 
 
@@ -1475,7 +1486,8 @@ module ka10(
 		sct0 |
 		dbt3 |
 		div_t1 |
-		dst5 & ~ir[1];
+		dst5 & ~ir[1] |
+		fpt3;
 	wire ad_ar_m_en_set =
 		ft9 & ad_ar_m_en_ft9 |
 		et1 & ir_boole |
@@ -1505,7 +1517,8 @@ module ka10(
 		byt7a |
 		dbt1 | dbt3 |
 		dst1 & br[0] |
-		dst3 & ad_md_p;
+		dst3 & ad_md_p |
+		fmt1;
 	wire ad_br_m_en_clr =
 		mr_clr |
 		et0 & ad_br_p_only_en_et0 |
@@ -1545,7 +1558,8 @@ module ka10(
 		div_t1 & ~div_low_zero_cond |
 		dst3 & ~ad_md_m |
 		dst4 & ~dsf7 |
-		nrt0;
+		nrt0 |
+		fpt3;
 	wire ad_cry36_set =
 		ft9 & ad_cry36_ft9 |
 		et1 & jffo_f1 |
@@ -2192,6 +2206,8 @@ module ka10(
 			sc <= scad;
 		if(sc_fm_ar0_5_1)
 			sc[3:8] <= sc[3:8] | ar[0:5];
+		if(sc_fm_ar0_8_1)
+			sc <= sc | ar[0:8];
 		if(sc_fm_br1)
 			sc <= sc | { br[18], br[28:35] };
 		if(sc_inc)
@@ -2200,6 +2216,10 @@ module ka10(
 			sc <= sc | 'o44;
 		if(sc_md_setup)
 			sc <= sc | 9'o735;
+		if(sc_fp_setup)
+			sc <= sc | 9'o744 | ir[5]==0;
+		if(sc_fm_fe1)
+			sc <= sc | fe;
 	end
 
 
@@ -2216,7 +2236,8 @@ module ka10(
 	wire sc_clr =
 		// TODO
 		mr_clr |
-		byt2 | byt4;
+		byt2 | byt4 |
+		fpt3 & ~ir[5];
 	wire sc_inc = sct1;
 	wire sc_fm_scadJ =
 		// TODO
@@ -2224,10 +2245,13 @@ module ka10(
 		byt7 |
 		et0 & (byf5 | ir_dfn) |
 		et2 & ir_fsc |
-		nrt2 | nrt3 | nrt4 | nrt6 | nrt10 | nlt1;
+		nrt2 | nrt3 | nrt4 | nrt6 | nrt10 | nlt1 |
+		fpt1 | fpt2 |
+		fpt3 & ir[5];
+	wire sc_fm_fe1 = fmt3;
 	wire sc_fm_ar0_5_1 = byt1 | byt7a;
 	wire sc_fm_br1 = et0 & (ir_fsc | sr_op);
-	wire sc_fm_ar0_8_1 = 0;
+	wire sc_fm_ar0_8_1 = fpt0;
 
 	wire sc_negate_setup =
 		// TODO
@@ -2236,15 +2260,18 @@ module ka10(
 	wire scad_sc_inc_setup =
 		// TODO
 		sct0 |
-		nrt0 | nrt2;
+		nrt0 | nrt2 |
+		fpt3;
 	wire scad_sc_comp_setup =
 		nrt1 | nrt3;
 	wire scad_sc_p_br_setup =
 		ft9 & ir_dfn |
-		et0 & ir_fsc & ~ar[0];
+		et0 & ir_fsc & ~ar[0] |
+		fpt0 & ar[0];
 	wire scad_sc_m_br_setup =
 		et0 & ir_fsc & ar[0];
 	wire sc_md_setup = et0 & ir_md;
+	wire sc_fp_setup = fmt1;
 	wire scad_all_dis =
 		// TODO
 		mr_clr |
@@ -2257,12 +2284,14 @@ module ka10(
 		scad_sc_p_br_setup |
 		scad_sc_m_br_setup;
 	wire sc_p_en =
-		scad_sc_p_br_setup;
+		scad_sc_p_br_setup |
+		fpt2 & ir[5];
 	wire sc_m_en =
 		// TODO
 		byt1 | byt6 |
 		nlt0 |
-		scad_sc_m_br_setup;
+		scad_sc_m_br_setup |
+		fpt2 & ~ir[5];
 
 	always @(posedge clk) begin
 		if(scad_all_dis) begin
@@ -2294,6 +2323,7 @@ module ka10(
 			scad_data1 <= 0;
 			scad_sc_comp <= 0;
 			scad_inc_en <= 1;
+			scad_br_en <= 0;
 		end
 		if(sc_p_en) begin
 			scad_data0 <= 0;
@@ -2308,9 +2338,18 @@ module ka10(
 			if(~ir_fsc)
 				scad_inc_en <= 1;
 		end
-		if(scad_sc_inc_setup)
+		if(fpt1) begin
+			if(fp_exp_add)
+				scad_data0 <= 1;
+			else
+				scad_data1 <= 1;
+			scad_sc_comp <= 0;
+			if(ir[5])
+				scad_inc_en <= 1;
+		end
+		if(fpt2)
 			scad_br_en <= 0;
-		if(scad_sc_p_br_setup | scad_sc_m_br_setup)
+		if(scad_sc_p_br_setup | scad_sc_m_br_setup | fpt1)
 			scad_br_en <= 1;
 		if(byt1 | byt6)
 			scad_ar6_11_en <= 1;
@@ -2318,6 +2357,8 @@ module ka10(
 			scad_ar6_11_en <= 0;
 		if(nlt0)
 			scad_33_en <= 1;
+		if(fpt2)
+			scad_200_en <= 1;
 	end
 
 
@@ -2387,8 +2428,8 @@ module ka10(
 	wire mst1;
 
 	pa ms_pa1(.clk(clk), .reset(reset),
-		// TODO
-		.in(et0 & ir_xmul),
+		.in(et0 & ir_xmul |
+		    fmt1_D),
 		.p(mst0));
 	pa ms_pa2(.clk(clk), .reset(reset), .in(mst0_D), .p(mst1));
 	pa ms_pa3(.clk(clk), .reset(reset),
@@ -2525,7 +2566,8 @@ module ka10(
 	pa pa_nrt1(.clk(clk), .reset(reset),
 		// TODO
 		.in(et2 & ir_fsc |
-		    nrt7),
+		    nrt7 |
+		    fmt3),
 		.p(nrt0));
 	pa pa_nrt2(.clk(clk), .reset(reset),
 		.in(nrt0_del & nr_sh_rt_cond),
@@ -2579,6 +2621,49 @@ module ka10(
 		if(nrt6)
 			nrf1 <= 1;
 	end
+
+
+	/* FE */
+	reg [0:8] fe;
+	wire fe_clr = mr_clr;
+	wire fe_fm_scad1 = fpt3;
+
+	always @(posedge clk) begin
+		if(fe_clr)
+			fe <= 0;
+		if(fe_fm_scad1)
+			fe <= fe | scad;
+	end
+
+
+	/* FP FM */
+	wire fp_exp_add = ir[5] ^ br[0];
+	wire fpt0;
+	wire fpt1;
+	wire fpt2;
+	wire fpt3;
+	wire fpt3_del;
+	wire fmt1;
+	wire fmt3;
+
+	pa fp_pa1(.clk(clk), .reset(reset),
+		.in(et0_del & ir_fdv_NOT_l |
+		    et0 & ir_fmp |
+		    div_t4_del & ir_fdvl),
+		.p(fpt0));
+	pa fp_pa2(.clk(clk), .reset(reset), .in(fpt0_D), .p(fpt1));
+	pa fp_pa3(.clk(clk), .reset(reset), .in(fpt1_D), .p(fpt2));
+	pa fp_pa4(.clk(clk), .reset(reset), .in(fpt2_D), .p(fpt3));
+	pa fm_pa1(.clk(clk), .reset(reset), .in(fpt3_del & ~ir[5]), .p(fmt1));
+	pa fm_pa2(.clk(clk), .reset(reset), .in(sct4_del & ir_fmp), .p(fmt3));
+
+	wire fpt0_D, fpt1_D, fpt2_D;
+	wire fmt1_D;
+	dly140ns fp_dly1(.clk(clk), .reset(reset), .in(fpt0), .p(fpt0_D));
+	dly140ns fp_dly2(.clk(clk), .reset(reset), .in(fpt1), .p(fpt1_D));
+	dly140ns fp_dly3(.clk(clk), .reset(reset), .in(fpt2), .p(fpt2_D));
+	dly65ns fp_dly4(.clk(clk), .reset(reset), .in(fpt3), .p(fpt3_del));
+	dly90ns fm_dly1(.clk(clk), .reset(reset), .in(fmt1), .p(fmt1_D));
 
 
 	/* MI */

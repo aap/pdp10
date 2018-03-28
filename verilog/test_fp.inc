@@ -17,11 +17,14 @@ initial begin: meminit
 		pdp10.mem0.core[i] = pdp10.ka10.fmem[i];
 	end
 
-//	pdp10.mem0.core['o20] = Inst(`FSC, 0, 0, 0, 4);
-//	pdp10.mem0.core['o20] = Inst(`FSC, 4, 0, 0, 0);
-	pdp10.mem0.core['o20] = Inst(`DFN, 4, 0, 0, 'o100);
 	pdp10.mem0.core['o100] = 36'o001_000000123;
 	pdp10.mem0.core['o101] = 36'o001_000000000;
+
+
+//	pdp10.mem0.core['o20] = Inst(`FSC, 0, 0, 0, 4);
+//	pdp10.mem0.core['o20] = Inst(`FSC, 4, 0, 0, 0);
+//	pdp10.mem0.core['o20] = Inst(`DFN, 4, 0, 0, 'o100);
+	pdp10.mem0.core['o20] = Inst(`FMP, 0, 0, 0, 1);
 
 
 	pdp10.mem0.core['o21] = Inst(`JRST, 4, 0, 0, 'o20);

@@ -1041,7 +1041,7 @@ module ka10(
 		dst3 |
 		nrt2 & ~ir_fdvx;
 	wire mq_sh_rt =
-		sct3 & (sr_go_right | msf1) |
+		sct3 & (sr_go_right | msf1 | faf1) |
 		mpt2 |
 		nrt10 & ~ir_fdvx;
 
@@ -1109,7 +1109,8 @@ module ka10(
 		kt1 | at1 |
 		ft2 | ft4 |
 		mst1 |
-		nlt1 & scad[0];
+		nlt1 & scad[0] |
+		fat4;
 	wire arlt_clr =
 		ar_clr |
 		et0 & hwt_arlt_clr_et0 |
@@ -1125,7 +1126,7 @@ module ka10(
 		nrt2;
 	wire ar_sh_rt =
 		// TODO
-		sct3 & (lb_byte_load | sr_go_right | msf1) |
+		sct3 & (lb_byte_load | sr_go_right | msf1 | faf1) |
 		nrt10 | nlt2;
 	wire ar_fm_ds1 =
 		kt2 & key_dep_OR_dep_nxt_OR_exe |
@@ -1166,7 +1167,8 @@ module ka10(
 		dst4 & ~mq[35] |
 		div_t5 & dsf7_XOR_br0 |
 		nrt7 |
-		fmt3;
+		fmt3 |
+		fat3a | fat8;
 	wire arlt_fm_adJ =
 		ar_fm_adJ |
 		et0 & arlt_fm_adJ_et0 |
@@ -1224,7 +1226,8 @@ module ka10(
 		nlt3 & ad[9:35] != 0;
 	wire ar1_8_fm_ar0J =
 		et1 & ir_fsc |
-		fpt3;
+		fpt3 |
+		fat5;
 	wire ari_dfn_clr = ir_dfn & ~scad[0];
 	wire ari_dfn_set = ir_dfn & scad[0];
 
@@ -1264,6 +1267,8 @@ module ka10(
 	wire ar_fm_adJ_et2 = ir_boole | ir_dfn;
 	wire ar_swap_et2 = ir_test_swap | ir_jsa;
 	wire ar_fm_mqJ_et2 = ir_pop | ir_blt;
+
+	wire ar0_eq_br0 = ar[0] == br[0];
 
 	always @(posedge clk) begin: arctl
 		integer i;
@@ -1414,9 +1419,10 @@ module ka10(
 		at1 | at3 |
 		ft1a & ~ir_jrst |
 		dbt2 |
-		mst0;
-	wire br1_8_clr = fpt3 & ~br[0];
-	wire br1_8_set = fpt3 & br[0];
+		mst0 |
+		fat3a;
+	wire br1_8_clr = (fpt3 | fat7) & ~br[0];
+	wire br1_8_set = (fpt3 | fat7) & br[0];
 
 	wire br_fm_arJ_et0 = ir_jsa | ir_exch | ir_fsb |
 		hwt_e_long | ir_dfn | ir_fsc;
@@ -1477,7 +1483,8 @@ module ka10(
 		div_t1 |
 		dst1 |
 		dst5 & ~ir[1] |
-		nrt0;
+		nrt0 |
+		fat4;
 	wire ad_ar_m_en_clr =
 		et0 & ad_br_p_only_en_et0 |
 		et0 & ir_idiv |
@@ -1504,7 +1511,8 @@ module ka10(
 		mpt3 |
 		dst3 & ~ad_md_p |
 		dst4 |
-		nrt0;
+		nrt0 |
+		fat5;
 	wire ad_br_p_en_set =
 		mr_clr | at4 |
 		ft9 & ad_br_p_en_ft9 |
@@ -1518,7 +1526,8 @@ module ka10(
 		dbt1 | dbt3 |
 		dst1 & br[0] |
 		dst3 & ad_md_p |
-		fmt1;
+		fmt1 |
+		fat1 | fat6;
 	wire ad_br_m_en_clr =
 		mr_clr |
 		et0 & ad_br_p_only_en_et0 |
@@ -1531,7 +1540,8 @@ module ka10(
 		mpt3 |
 		dst3 & ~ad_md_m |
 		dst4 |
-		nrt0;
+		nrt0 |
+		fat1;
 	wire ad_br_m_en_set =
 		ft9 & ad_br_m_en_ft9 |
 		blt_t1 |
@@ -1559,7 +1569,8 @@ module ka10(
 		dst3 & ~ad_md_m |
 		dst4 & ~dsf7 |
 		nrt0 |
-		fpt3;
+		fpt3 |
+		fat1;
 	wire ad_cry36_set =
 		ft9 & ad_cry36_ft9 |
 		et1 & jffo_f1 |
@@ -2233,51 +2244,60 @@ module ka10(
 	reg scad_200_en;
 	reg scad_33_en;
 	wire sc_sc0_XOR_sc1 = sc[0] ^ sc[1];
+	wire sc0_eq_ar0 = sc[0] == ar[0];
 	wire sc_clr =
 		// TODO
 		mr_clr |
 		byt2 | byt4 |
-		fpt3 & ~ir[5];
+		fpt3 & ~ir[5] |
+		fat4;
 	wire sc_inc = sct1;
 	wire sc_fm_scadJ =
-		// TODO
 		srt1 |
 		byt7 |
 		et0 & (byf5 | ir_dfn) |
 		et2 & ir_fsc |
 		nrt2 | nrt3 | nrt4 | nrt6 | nrt10 | nlt1 |
 		fpt1 | fpt2 |
-		fpt3 & ir[5];
+		fpt3 & ir[5] |
+		fat2 | fat3 | fat7 |
+		fat8 & br[0];
 	wire sc_fm_fe1 = fmt3;
 	wire sc_fm_ar0_5_1 = byt1 | byt7a;
 	wire sc_fm_br1 = et0 & (ir_fsc | sr_op);
-	wire sc_fm_ar0_8_1 = fpt0;
+	wire sc_fm_ar0_8_1 = fpt0 | fat1;
 
 	wire sc_negate_setup =
-		// TODO
 		et0 & sr_go_left |
-		byt7a;
+		byt7a |
+		fat2 & ~scad[0] & ar0_eq_br0;
 	wire scad_sc_inc_setup =
 		// TODO
 		sct0 |
 		nrt0 | nrt2 |
-		fpt3;
+		fpt3 |
+		fat2 & scad[0] & ~ar0_eq_br0;
 	wire scad_sc_comp_setup =
-		nrt1 | nrt3;
+		nrt1 | nrt3 |
+		fat2 & ~scad[0] & ~ar0_eq_br0 |
+		fat7;
 	wire scad_sc_p_br_setup =
 		ft9 & ir_dfn |
 		et0 & ir_fsc & ~ar[0] |
-		fpt0 & ar[0];
+		fpt0 & ar[0] |
+		fat1 & ~ar0_eq_br0 |
+		fat6;
 	wire scad_sc_m_br_setup =
-		et0 & ir_fsc & ar[0];
+		et0 & ir_fsc & ar[0] |
+		fat1 & ar0_eq_br0;
 	wire sc_md_setup = et0 & ir_md;
 	wire sc_fp_setup = fmt1;
 	wire scad_all_dis =
-		// TODO
 		mr_clr |
 		et0 & ir_dfn |
 		nrt4 & ~ar[0] |
-		nlt2;
+		nlt2 |
+		fat2 & scad[0] & ar0_eq_br0;
 	wire scad_misc_clr =
 		scad_all_dis |
 		scad_sc_inc_setup |
@@ -2378,12 +2398,12 @@ module ka10(
 
 	pa sr_pa1(.clk(clk), .reset(reset), .in(et0_D & sr_go_left), .p(srt1));
 	pa sc_pa2(.clk(clk), .reset(reset),
-		// TODO
 		.in(et0_D & sc_sbr_et0 |
 		    srt1 |
 		    byt7 |
 		    mst1 |
-		    dst2),
+		    dst2 |
+		    fat5),
 		.p(sct0));
 	pa sc_pa3(.clk(clk), .reset(reset),
 		.in((sct0_D | sct3_D) & ~sc_stop & sc[0] |
@@ -2543,7 +2563,7 @@ module ka10(
 	/* NR */
 	reg nrf1;
 	wire nr_all_zero = ad_eq_0 & (mq[8:35] == 0 | ir_fdvx);
-	wire nr_normal = (ar[0] ^ ar[8]) | ad[9] & ad[10:35] == 0 | ir_ufa;
+	wire nr_normal = (ar[0] ^ ar[9]) | ad[9] & ad[10:35] == 0 | ir_ufa;
 	wire nr_sh_rt_cond = (ar[0] ^ ar[8]) | ad[9:35] == 0;
 	wire nr_round = ~nrf1 & ir[6] & mq[8] & (mq[9:35] != 0 & ~ar[0]);
 	wire nrt0;
@@ -2567,7 +2587,8 @@ module ka10(
 		// TODO
 		.in(et2 & ir_fsc |
 		    nrt7 |
-		    fmt3),
+		    fmt3 |
+		    fat8),
 		.p(nrt0));
 	pa pa_nrt2(.clk(clk), .reset(reset),
 		.in(nrt0_del & nr_sh_rt_cond),
@@ -2665,6 +2686,50 @@ module ka10(
 	dly65ns fp_dly4(.clk(clk), .reset(reset), .in(fpt3), .p(fpt3_del));
 	dly90ns fm_dly1(.clk(clk), .reset(reset), .in(fmt1), .p(fmt1_D));
 
+
+	/* FA */
+	reg faf1;
+	wire fat1;
+	wire fat2;
+	wire fat3;
+	wire fat3a;
+	wire fat4;
+	wire fat5;
+	wire fat6;
+	wire fat7;
+	wire fat8;
+
+	pa fa_pa1(.clk(clk), .reset(reset),
+		.in(et0_del & (ir_fad | ir_fsb | ir_ufa)),
+		.p(fat1));
+	pa fa_pa2(.clk(clk), .reset(reset), .in(fat1_D), .p(fat2));
+	pa fa_pa3(.clk(clk), .reset(reset), .in(fat2_D), .p(fat3));
+	pa fa_pa4(.clk(clk), .reset(reset), .in(fat3 & sc0_eq_ar0), .p(fat3a));
+	pa fa_pa5(.clk(clk), .reset(reset),
+		.in(fat3_D & sc[0] & (~sc[1] | ~sc[2])),	// negative 4XX-6XX
+		.p(fat4));
+	pa fa_pa6(.clk(clk), .reset(reset),
+		.in(fat3_D & (~sc[0] | sc[1] & sc[2])),		// negative 7XX or positive (= 0)
+		.p(fat5));
+	pa fa_pa7(.clk(clk), .reset(reset),
+		.in(sct4 & faf1 | fat4),
+		.p(fat6));
+	pa fa_pa8(.clk(clk), .reset(reset), .in(fat6_D), .p(fat7));
+	pa fa_pa9(.clk(clk), .reset(reset), .in(fat7_D), .p(fat8));
+
+	wire fat1_D, fat2_D, fat3_D, fat6_D, fat7_D;
+	dly190ns fa_dly1(.clk(clk), .reset(reset), .in(fat1), .p(fat1_D));
+	dly165ns fa_dly2(.clk(clk), .reset(reset), .in(fat2), .p(fat2_D));
+	dly140ns fa_dly3(.clk(clk), .reset(reset), .in(fat3), .p(fat3_D));
+	dly165ns fa_dly4(.clk(clk), .reset(reset), .in(fat6), .p(fat6_D));
+	dly140ns fa_dly5(.clk(clk), .reset(reset), .in(fat7), .p(fat7_D));
+
+	always @(posedge clk) begin
+		if(mr_clr | fat6)
+			faf1 <= 0;
+		if(fat5)
+			faf1 <= 1;
+	end
 
 	/* MI */
 	reg [0:35] mi;

@@ -27,9 +27,11 @@ initial begin: meminit
 //	pdp10.mem0.core['o20] = Inst(`FSC, 4, 0, 0, 0);
 //	pdp10.mem0.core['o20] = Inst(`DFN, 4, 0, 0, 'o100);
 //	pdp10.mem0.core['o20] = Inst(`FMP, 0, 0, 0, 1);
-	pdp10.mem0.core['o20] = Inst(`FAD, 0, 0, 0, 6);
+//	pdp10.mem0.core['o20] = Inst(`FAD, 0, 0, 0, 6);
 //	pdp10.mem0.core['o20] = Inst(`UFA, 0, 0, 0, 6);
 //	pdp10.mem0.core['o20] = Inst(`FSB, 6, 0, 0, 0);
+//	pdp10.mem0.core['o20] = Inst(`FDV, 0, 0, 0, 6);
+	pdp10.mem0.core['o20] = Inst(`FDVL, 0, 0, 0, 6);
 
 
 	pdp10.mem0.core['o21] = Inst(`JRST, 4, 0, 0, 'o20);

@@ -90,6 +90,10 @@ struct KL10regs
 	int apr_prev_block;
 	int apr_vma_block;
 
+	/* shift and exp */
+	uint sc;
+	uint fe;
+
 	hword ir;
 };
 
@@ -128,6 +132,7 @@ struct KL10
 	int cram_br, cram_brx;
 	int cram_mq;
 	int cram_fm_adr_sel;
+	int cram_sh_armm_sel;
 	int cram_cond;
 	int cram_num;	// bits 0-8
 
@@ -785,6 +790,28 @@ load_pc(KL10 *kl)
 }
 
 void
+update_sh(KL10 *kl)
+{
+	switch(kl->cram_sh_armm_sel){
+	case 0:
+		if(kl->p.sc < 36)
+			kl->sh = kl->p.ar << kl->p.sc |
+				kl->p.arx >> 36-kl->p.sc;
+		else
+	case 2:		kl->sh = kl->p.arx;
+		break;
+	case 1:
+		kl->sh = kl->p.ar;
+		break;
+	case 3:
+		kl->sh = RT(kl->p.ar)<<18 | LT(kl->p.ar)>>18;
+		break;
+	default: assert(0);	/* can't happen */
+	}
+	kl->sh &= M36;
+}
+
+void
 tick(KL10 *kl)
 {
 	kl->p = kl->c;
@@ -887,6 +914,15 @@ test(KL10 *kl)
 	tick(kl);
 	update_fm(kl);
 	printf("FM: %012lo\n", kl->fm);
+	printf("\n");
+
+	kl->c.ar = 0123456654321;
+	kl->c.arx = 0112233445566;
+	kl->c.sc = 6;
+	kl->cram_sh_armm_sel = 0;
+	tick(kl);
+	update_sh(kl);
+	printf("SH: %012lo\n", kl->sh);
 	printf("\n");
 
 /*

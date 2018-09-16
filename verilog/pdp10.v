@@ -267,7 +267,8 @@ module test;
 
 //`include "test.inc"
 //`include "test_arith.inc"
-`include "test_fp.inc"
+//`include "test_fp.inc"
+`include "test_dpy.inc"
 
 	initial begin
 		pdp10.ka10.ma = 3;
@@ -282,7 +283,9 @@ module test;
 //		pdp10.key_adr_stop = 1;
 
 		#96 `TESTKEY = 1;
-//		pdp10.ka10.pi_act = 1;
+		pdp10.ka10.pi_act = 1;
+		pdp10.ka10.pir = 7'b0000010;
+
 //		pdp10.ka10.pio = 7'b1111111;
 //		pdp10.ka10.cpa_clk_en = 1;
 //		pdp10.ka10.cpa_clk_flag = 1;

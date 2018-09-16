@@ -5,10 +5,13 @@
 #include <assert.h>
 
 #define nil NULL
+typedef unsigned int uint;
 typedef uint64_t word;	/* A PDP-10 word (36 bits) */
 typedef uint32_t hword;	/* A PDP-10 half word (18 bits) */
 typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 
+#define M3 07ULL
+#define M4 017ULL
 #define M18 0000000777777ULL
 #define R18 M18
 #define L18 0777777000000ULL
@@ -82,6 +85,11 @@ struct KL10regs
 	aword adr_break;
 	aword prev_sec;
 
+	/* fastmem blocks */
+	int apr_current_block;
+	int apr_prev_block;
+	int apr_vma_block;
+
 	hword ir;
 };
 
@@ -94,6 +102,8 @@ struct KL10
 	int adx_cry_0;
 	aword vma_ad;
 	aword vma_held_or_pc;
+
+	word fastmem[16*8];
 
 	/* TODO */
 	word fm;	/* currently addressed FM */
@@ -117,8 +127,9 @@ struct KL10
 	int cram_ar, cram_arx;
 	int cram_br, cram_brx;
 	int cram_mq;
+	int cram_fm_adr_sel;
 	int cram_cond;
-	int cram_num;
+	int cram_num;	// bits 0-8
 
 	/* AD control */
 	int ctl_ad_long;	// CTL1
@@ -157,6 +168,17 @@ struct KL10
 	int mcl_vmax_sel;
 	int mcl_vmax_en;
 	int mcl_load_vma_held;
+	int mcl_xr_previous;
+	int mcl_load_vma_context;
+	int mcl_vma_prev_en;
+
+	/* fastmem control */
+	int apr_fm_block;	// APR5
+	int apr_fm_adr;		// APR4
+	int con_fm_write;	// CON5
+
+	/* shift matrix control */
+	int shm_instr_format;
 };
 
 int
@@ -204,7 +226,7 @@ sxt36(word w)
 }
 
 void
-calc_adx(KL10 *kl)
+update_adx(KL10 *kl)
 {
 	int c, m, func;
 	word adxa, adxb;
@@ -322,7 +344,7 @@ calc_adx(KL10 *kl)
 }
 
 void
-calc_ad(KL10 *kl)
+update_ad(KL10 *kl)
 {
 	int c, m, func;
 	word ada, adb;
@@ -587,7 +609,103 @@ load_mq(KL10 *kl)
 }
 
 void
-calc_vma_ad(KL10 *kl)
+update_fm(KL10 *kl)
+{
+	uint a, b;
+
+	if(kl->mcl_load_vma_context)
+		kl->c.apr_vma_block = kl->mcl_vma_prev_en ?
+			kl->p.apr_prev_block : kl->p.apr_current_block;
+
+	switch(kl->cram_fm_adr_sel){
+	case 0:
+		kl->apr_fm_adr = kl->p.ir>>5;
+		kl->apr_fm_block = kl->p.apr_current_block;
+		break;
+	case 1:
+		kl->apr_fm_adr = (kl->p.ir>>5)+1;
+		kl->apr_fm_block = kl->p.apr_current_block;
+		break;
+	case 2:
+		kl->apr_fm_adr = kl->p.arx >>
+			(kl->shm_instr_format ? 18 : 30);
+		kl->apr_fm_block = kl->mcl_xr_previous ?
+			kl->p.apr_prev_block : kl->p.apr_current_block;
+		break;
+	case 3:
+		kl->apr_fm_adr = kl->p.vma;
+		kl->apr_fm_block = kl->p.apr_vma_block;
+		break;
+	case 4:
+		kl->apr_fm_adr = (kl->p.ir>>5)+2;
+		kl->apr_fm_block = kl->p.apr_current_block;
+		break;
+	case 5:
+		kl->apr_fm_adr = (kl->p.ir>>5)+3;
+		kl->apr_fm_block = kl->p.apr_current_block;
+		break;
+	case 6:
+		a = kl->p.ir>>5;
+		b = kl->cram_num;
+		switch(kl->cram_num>>4 & 037){
+		/* Arithmetic */
+		case 000: kl->apr_fm_adr = a; break;
+		case 001: kl->apr_fm_adr = a + (a&~b); break;
+		case 002: kl->apr_fm_adr = a + (a&b); break;
+		case 003: kl->apr_fm_adr = a + a; break;
+		case 004: kl->apr_fm_adr = a|b; break;
+		case 005: kl->apr_fm_adr = (a|b) + (a&~b); break;
+		case 006: kl->apr_fm_adr = a + b; break;
+		case 007: kl->apr_fm_adr = a + (a|b); break;
+		case 010: kl->apr_fm_adr = a|~b; break;
+		case 011: kl->apr_fm_adr = a + ~b; break;
+		case 012: kl->apr_fm_adr = (a|~b) + (a&b); break;
+		case 013: kl->apr_fm_adr = a + (a|~b); break;
+		case 014: kl->apr_fm_adr = ~0; break;
+		case 015: kl->apr_fm_adr = (a&~b) + ~0; break;
+		case 016: kl->apr_fm_adr = (a&b) + ~0; break;
+		case 017: kl->apr_fm_adr = a + ~0; break;
+		/* Boole */
+		case 020: kl->apr_fm_adr = ~a; break;
+		case 021: kl->apr_fm_adr = ~a | ~b; break;
+		case 022: kl->apr_fm_adr = ~a | b; break;
+		case 023: kl->apr_fm_adr = ~0; break;
+		case 024: kl->apr_fm_adr = ~a & ~b; break;
+		case 025: kl->apr_fm_adr = ~b; break;
+		case 026: kl->apr_fm_adr = a ^ ~b; break;
+		case 027: kl->apr_fm_adr = a | ~b; break;
+		case 030: kl->apr_fm_adr = ~a & b; break;
+		case 031: kl->apr_fm_adr = a ^ b; break;
+		case 032: kl->apr_fm_adr = b; break;
+		case 033: kl->apr_fm_adr = a | b; break;
+		case 034: kl->apr_fm_adr = 0; break;
+		case 035: kl->apr_fm_adr = a & ~b; break;
+		case 036: kl->apr_fm_adr = a & b; break;
+		case 037: kl->apr_fm_adr = a; break;
+		}
+		kl->apr_fm_block = kl->p.apr_current_block;
+		break;
+	case 7:
+		kl->apr_fm_adr = kl->cram_num;
+		kl->apr_fm_block = kl->cram_num >> 4;
+		break;
+	default: assert(0);	/* can't happen */
+	}
+	kl->apr_fm_adr &= M4;
+	kl->apr_fm_block &= M3;
+
+	kl->fm = kl->fastmem[kl->apr_fm_adr | kl->apr_fm_block<<4];
+}
+
+void
+write_fm(KL10 *kl)
+{
+	if(kl->con_fm_write)
+		kl->fastmem[kl->apr_fm_adr | kl->apr_fm_block<<4] = kl->p.ar;
+}
+
+void
+update_vma_ad(KL10 *kl)
 {
 	if(kl->cram_cond >= COND_VMA_FM_NUM &&
 	   kl->cram_cond <= COND_VMA_FM_NUM_PI_2)
@@ -598,7 +716,7 @@ calc_vma_ad(KL10 *kl)
 }
 
 void
-calc_vma_held_or_pc(KL10 *kl)
+update_vma_held_or_pc(KL10 *kl)
 {
 	if(kl->cram_cond == COND_SEL_VMA)
 		kl->vma_held_or_pc = kl->p.vma_held;
@@ -632,7 +750,7 @@ load_vma(KL10 *kl)
 		if(kl->mcl_vma_fm_ad)
 			vma_mix = kl->ad;
 		else{
-			calc_vma_ad(kl);
+			update_vma_ad(kl);
 			vma_mix = kl->vma_ad;
 		}
 		kl->c.vma = vma_in & 077000000 |
@@ -675,6 +793,13 @@ tick(KL10 *kl)
 void
 test(KL10 *kl)
 {
+	int i, j;
+	for(i = 0; i < 8; i++)
+		for(j = 0; j < 16; j++)
+			kl->fastmem[i*16+j] = 0123456700000 | i<<9 | j;
+
+	kl->shm_instr_format = 1;
+
 	kl->cram_ad = 006;
 	kl->cram_ada = 0;
 	kl->cram_adb = 2;
@@ -689,8 +814,8 @@ test(KL10 *kl)
 	kl->ctl_inh_cry_18 = 0;
 	kl->ctl_gen_cry_18 = 0;
 	tick(kl);
-	calc_adx(kl);
-	calc_ad(kl);
+	update_adx(kl);
+	update_ad(kl);
 
 	printf("AR: %012lo, BR: %012lo\n", kl->p.ar, kl->p.br);
 	printf("AD: %012lo\n", kl->ad);
@@ -752,6 +877,18 @@ test(KL10 *kl)
 	printf("PC: %08o\n", kl->c.pc);
 	printf("\n");
 
+	kl->c.ir = 0000740;
+	kl->c.arx = 0170017000000;
+	kl->c.apr_prev_block = 3;
+	kl->c.apr_current_block = 4;
+	kl->mcl_xr_previous = 1;
+	kl->cram_fm_adr_sel = 2;
+	kl->shm_instr_format = 0;
+	tick(kl);
+	update_fm(kl);
+	printf("FM: %012lo\n", kl->fm);
+	printf("\n");
+
 /*
 	int i, j;
 	kl->c.ar = 0;
@@ -759,8 +896,8 @@ test(KL10 *kl)
 		kl->c.br = 0;
 		for(j = 0; j < 4; j++){
 			tick(kl);
-			calc_adx(kl);
-			calc_ad(kl);
+			update_adx(kl);
+			update_ad(kl);
 			printf("%o + %o = %02o; %d %d %d\n",
 				kl->c.ar>>34 & 3,
 				kl->c.br>>34 & 3,

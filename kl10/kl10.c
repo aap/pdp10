@@ -12,6 +12,11 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 
 #define M3 07ULL
 #define M4 017ULL
+#define M6 077ULL
+#define M8 0377ULL
+#define M9 0777ULL
+#define M10 01777ULL
+#define M11 03777ULL
 #define M18 0000000777777ULL
 #define R18 M18
 #define L18 0777777000000ULL
@@ -23,6 +28,8 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 #define M38 03777777777777ULL
 #define S36 0400000000000ULL
 #define SXT36 (~M36)
+#define FB0 0400000000000ULL
+#define FB18 0000000400000ULL
 
 #define LT(w) ((w) & L18)
 #define RT(w) ((w) & R18)
@@ -32,6 +39,7 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 
 enum
 {
+	/* COND field */
 	COND_FM_WRITE = 010,
 	COND_PCF_FM_NUM = 011,
 	COND_FE_SHRT = 012,
@@ -54,6 +62,31 @@ enum
 	COND_VMA_DEC = 035,
 	COND_VMA_INC = 036,
 	COND_LOAD_VMA_HELD = 037,
+
+	/* SPEC field */
+	DISP_AREAD = 002,
+	DISP_RETURN = 003,
+	DISP_NICOND = 006,
+	DISP_MUL = 030,
+	DISP_DIV = 031,
+	DISP_NORM = 035,
+	DISP_EA_MOD = 036,
+
+	SPEC_INH_CRY_18 = 011,
+	SPEC_MQ_SHIFT = 012,
+	SPEC_SCM_ALT = 013,
+	SPEC_CLR_FPD = 014,
+	SPEC_LOAD_PC = 015,
+	SPEC_XCRY_AR0 = 016,
+	SPEC_GEN_CRY_18 = 017,
+	SPEC_STACK_UPDATE = 020,	// SEC HOLD?
+	SPEC_SBR_CALL = 021,
+	SPEC_ARL_IND = 022,
+	SPEC_MTR_CTL = 023,
+	SPEC_FLAG_CTL = 024,
+	SPEC_SAVE_FLAGS = 025,
+	SPEC_SP_MEM_CYCLE = 026,
+	SPEC_AD_LONG = 027
 };
 
 /* A DRAM word */
@@ -91,8 +124,8 @@ struct KL10regs
 	int apr_vma_block;
 
 	/* shift and exp */
-	uint sc;
-	uint fe;
+	uint sc;	/* bits sign,0-9 */
+	uint fe;	/* bits sign,0-9 */
 
 	hword ir;
 };
@@ -106,6 +139,7 @@ struct KL10
 	int adx_cry_0;
 	aword vma_ad;
 	aword vma_held_or_pc;
+	uint scad;	/* bits sign,0-9 */
 
 	word fastmem[16*8];
 
@@ -132,8 +166,14 @@ struct KL10
 	int cram_br, cram_brx;
 	int cram_mq;
 	int cram_fm_adr_sel;
+	int cram_scad_sel;
+	int cram_scada_sel;
+	int cram_scadb_sel;
+	int cram_sc_sel;
+	int cram_fe_load;
 	int cram_sh_armm_sel;
 	int cram_cond;
+	int cram_spec;
 	int cram_num;	// bits 0-8
 
 	/* AD control */
@@ -812,6 +852,81 @@ update_sh(KL10 *kl)
 }
 
 void
+update_scad(KL10 *kl)
+{
+	uint scada, scadb;
+
+	switch(kl->cram_scada_sel){
+	case 0: scada = kl->p.fe; break;
+	case 1: scada = kl->p.ar>>30 & M6; break;
+	case 2:
+		scada = kl->p.ar>>27 & M8;
+		if(kl->p.ar & FB0)
+			scada ^= M8;
+		break;
+	case 3: scada = kl->cram_num | kl->cram_num<<1 & 01000; break;
+	case 4:
+	case 5:
+	case 6:
+	case 7: scada = 0; break;
+	default: assert(0);	/* can't happen */
+	}
+	scada &= M10;
+	scada |= scada<<1 & 02000;
+
+	switch(kl->cram_scadb_sel){
+	case 0: scadb = kl->p.sc; break;
+	case 1: scadb = kl->p.ar>>24 & M6; break;
+	case 2: scadb = kl->p.ar>>27 & M9; break;
+	case 3: scadb = kl->cram_num; break;
+	default: assert(0);	/* can't happen */
+	}
+	scadb &= M10;
+	scadb |= scadb<<1 & 02000;
+
+	switch(kl->cram_scad_sel){
+	case 0: kl->scad = scada; break;
+	case 1: kl->scad = scada + ~scadb; break;
+	case 2: kl->scad = scada + scadb; break;
+	case 3: kl->scad = scada + ~0; break;
+	case 4: kl->scad = scada + 1; break;
+	case 5: kl->scad = scada + ~scadb + 1; break;
+	case 6: kl->scad = scada | scadb; break;
+	case 7: kl->scad = scada & scadb; break;
+	default: assert(0);	/* can't happen */
+	}
+	kl->scad &= M11;
+}
+
+void
+load_sc_fe(KL10 *kl)
+{
+	uint scm;
+
+	switch(kl->cram_sc_sel<<1 | kl->cram_spec==SPEC_SCM_ALT){
+	case 0: scm = kl->p.sc; break;
+	case 1: scm = kl->p.fe; break;
+	case 2: scm = kl->scad; break;
+	case 3:
+		scm = kl->p.ar & M8;
+		if(kl->p.ar & FB18)
+			scm |= 01400;
+		break;
+	default: assert(0);	/* can't happen */
+	}
+	kl->c.sc = scm & M10;
+
+	if(kl->cram_fe_load){
+		kl->c.fe = kl->scad & M10;
+		kl->c.fe |= kl->c.fe<<1 & 02000;
+	}else if(kl->cram_cond == COND_FE_SHRT){
+		kl->c.fe >>= 1;
+		kl->c.fe |= kl->c.fe<<1 & 02000;
+	}
+	// TODO: reset. shift left?
+}
+
+void
 tick(KL10 *kl)
 {
 	kl->p = kl->c;
@@ -924,6 +1039,28 @@ test(KL10 *kl)
 	update_sh(kl);
 	printf("SH: %012lo\n", kl->sh);
 	printf("\n");
+
+	kl->c.fe = 01777;
+	kl->c.sc = 01321;
+	kl->c.ar = 077451600321;
+	kl->cram_num = 01123;
+	kl->cram_scada_sel = 3;
+	kl->cram_scadb_sel = 2;
+	kl->cram_scad_sel = 7;
+	tick(kl);
+	update_scad(kl);
+	printf("SCAD: %04o\n", kl->scad);
+
+	kl->scad = 01111;
+	kl->c.sc = 01234;
+	kl->c.fe = 03432;
+	kl->cram_sc_sel = 1;
+	kl->cram_spec = SPEC_SCM_ALT;
+	kl->cram_fe_load = 0;
+	kl->cram_cond = COND_FE_SHRT;
+	tick(kl);
+	load_sc_fe(kl);
+	printf("SC: %04o FE: %04o\n", kl->c.sc, kl->c.fe);
 
 /*
 	int i, j;

@@ -30,6 +30,8 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 #define SXT36 (~M36)
 #define FB0 0400000000000ULL
 #define FB18 0000000400000ULL
+#define MPOS 0770000000000ULL
+#define MSZ 0007700000000ULL
 
 #define LT(w) ((w) & L18)
 #define RT(w) ((w) & R18)
@@ -40,6 +42,14 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 enum
 {
 	/* COND field */
+	COND_ARLL_LOAD = 01,
+	COND_ARLR_LOAD = 02,
+	COND_ARR_LOAD = 03,
+	COND_AR_CLR = 04,
+	COND_ARX_CLR = 05,
+	COND_ARL_IND = 06,
+	COND_REG_CTL = 07,
+
 	COND_FM_WRITE = 010,
 	COND_PCF_FM_NUM = 011,
 	COND_FE_SHRT = 012,
@@ -89,6 +99,8 @@ enum
 	SPEC_AD_LONG = 027
 };
 
+#define COND_AR_FM_EXP (kl->cram_cond == COND_REG_CTL && kl->cram_num & 010)
+
 /* A DRAM word */
 typedef struct Dword Dword;
 struct Dword
@@ -116,7 +128,7 @@ struct KL10regs
 	aword vma;
 	aword vma_held;
 	aword adr_break;
-	aword prev_sec;
+	aword vma_prev_sec;
 
 	/* fastmem blocks */
 	int apr_current_block;
@@ -137,15 +149,12 @@ struct KL10
 	word ad, adx;
 	int ad_cry_n2, ad_cry_1, ad_overflow;
 	int adx_cry_0;
+	aword vma_in;
 	aword vma_ad;
 	aword vma_held_or_pc;
 	uint scad;	/* bits sign,0-9 */
 
-	word fastmem[16*8];
-
-	/* TODO */
-	word fm;	/* currently addressed FM */
-	word armm;
+	word fm;
 	word cache_data;
 	word ebus;
 	word sh;
@@ -155,11 +164,12 @@ struct KL10
 	KL10regs p;	// previous state
 	KL10regs c;	// current state
 
+	Cword cram[2048];	// 1280 in model A
 	Dword dram[512];
+	word fastmem[16*8];
+
 	int dr_adr;
 	int dram_a, dram_b, dram_j;
-
-	Cword cram[2048];	// 1280 in model A
 
 	int cram_ad, cram_ada, cram_adb;
 	int cram_ar, cram_arx;
@@ -224,6 +234,8 @@ struct KL10
 
 	/* shift matrix control */
 	int shm_instr_format;
+
+	hword serial;
 };
 
 int
@@ -527,10 +539,27 @@ void
 load_ar(KL10 *kl)
 {
 	word arl, arr;
-	word arm;
+	word arm, armm;
+
+	/* TODO: bit 12 */
+	armm = kl->vma_in & MSEC | kl->serial;
+	switch(kl->cram_sh_armm_sel){
+	case 0: armm |= (word)kl->cram_num<<27; break;
+	case 1: armm |= kl->p.ar & S36 ? 0777000000000 : 0; break;
+	case 2:
+		armm |= (word)(kl->scad&0377)<<27;
+		if(COND_AR_FM_EXP || kl->p.ar>>27 & kl->scad & 0400)
+			armm |= FB0;
+		break;
+	case 3:
+		armm |= ((word)kl->scad<<27)&MPOS | kl->p.ar&MSZ;
+		break;
+	default: assert(0);	/* can't happen */
+	}
+	armm &= M36;
 
 	switch(kl->ctl_arl_sel){
-	case 0: arl = kl->armm; break;
+	case 0: arl = armm; break;
 	case 1: arl = kl->cache_data; break;
 	case 2: arl = kl->ad; break;
 	case 3: arl = kl->ebus; break;
@@ -541,7 +570,7 @@ load_ar(KL10 *kl)
 	default: assert(0);	/* can't happen */
 	}
 	switch(kl->ctl_arr_sel){
-	case 0: arr = kl->armm; break;
+	case 0: arr = armm; break;
 	case 1: arr = kl->cache_data; break;
 	case 2: arr = kl->ad; break;
 	case 3: arr = kl->ebus; break;
@@ -772,7 +801,18 @@ update_vma_held_or_pc(KL10 *kl)
 void
 load_vma(KL10 *kl)
 {
-	word vma_in, vma_mix;
+	word vma_mix;
+
+	if(kl->mcl_vmax_en) switch(kl->mcl_vmax_sel){
+	case 0: kl->vma_in = kl->p.vma; break;
+	case 1: kl->vma_in = kl->p.pc; break;
+	case 2: kl->vma_in = kl->p.vma_prev_sec; break;
+	case 3: kl->vma_in = kl->ad; break;
+	default: assert(0);	/* can't happen */
+	}else
+		kl->vma_in = 0;
+	kl->vma_in &= 077000000;
+
 	switch(kl->con_vma_sel){
 	case 0:
 		break;
@@ -783,23 +823,13 @@ load_vma(KL10 *kl)
 		kl->c.vma = kl->p.vma-1 & M24;
 		break;
 	case 3:
-		if(kl->mcl_vmax_en) switch(kl->mcl_vmax_sel){
-		case 0: vma_in = kl->p.vma; break;
-		case 1: vma_in = kl->p.pc; break;
-		case 2: vma_in = kl->p.prev_sec; break;
-		case 3: vma_in = kl->ad; break;
-		default: assert(0);	/* can't happen */
-		}else
-			vma_in = 0;
-
 		if(kl->mcl_vma_fm_ad)
 			vma_mix = kl->ad;
 		else{
 			update_vma_ad(kl);
 			vma_mix = kl->vma_ad;
 		}
-		kl->c.vma = vma_in & 077000000 |
-			vma_mix & M18;
+		kl->c.vma = kl->vma_in | vma_mix & M18;
 		break;
 	default: assert(0);	/* can't happen */
 	}
@@ -809,7 +839,7 @@ void
 load_prev_sec(KL10 *kl)
 {
 	if(kl->con_load_prev_context)
-		kl->c.prev_sec = kl->ad & MSEC;
+		kl->c.vma_prev_sec = kl->ad & MSEC;
 }
 
 void
@@ -966,7 +996,6 @@ test(KL10 *kl)
 	printf("\n");
 
 
-	kl->armm = 0112233445566;
 	kl->ebus = 0665544332211;
 
 	kl->ctl_ar_00_08_load = 1;
@@ -999,7 +1028,7 @@ test(KL10 *kl)
 
 	kl->c.pc = 0654321;
 	kl->c.vma = 012123456;
-	kl->c.prev_sec = 0;
+	kl->c.vma_prev_sec = 0;
 	kl->mcl_vma_inc = 1;
 	kl->trap_mix = 0;
 	kl->cram_num = 0777;
@@ -1061,6 +1090,14 @@ test(KL10 *kl)
 	tick(kl);
 	load_sc_fe(kl);
 	printf("SC: %04o FE: %04o\n", kl->c.sc, kl->c.fe);
+
+
+	kl->vma_in = 077777777;
+	kl->cram_num = 0777;
+	kl->scad = 0321;
+	kl->p.ar = 0701200000000;
+	kl->cram_sh_armm_sel = 3;
+	load_ar(kl);
 
 /*
 	int i, j;
@@ -1200,6 +1237,7 @@ main()
 
 	kl10 = malloc(sizeof(KL10));
 	memset(kl10, 0, sizeof(KL10));
+	kl10->serial = 0162534;
 
 	loaducode(kl10, "ucode/u1.txt");
 //	dumpdram(kl10);

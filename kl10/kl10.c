@@ -35,7 +35,6 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 
 #define LT(w) ((w) & L18)
 #define RT(w) ((w) & R18)
-//#define WD(lh, rh) ((lh) | (rh))
 
 #define SETMASK(l, r, m) l = ((l)&~(m) | (r)&(m))
 
@@ -139,6 +138,25 @@ struct KL10regs
 	uint sc;	/* bits sign,0-9 */
 	uint fe;	/* bits sign,0-9 */
 
+	/* PC flags, badly named SCD */
+	// TODO: use bits?
+	int scd_ov;
+	int scd_cry0;
+	int scd_cry1;
+	int scd_fov;
+	int scd_fxu;
+	int scd_div_chk;
+	int scd_trap_req;
+	int scd_trap_cyc;
+	int scd_fpd;
+	int scd_pcp;
+	int scd_user;
+	int scd_user_iot;
+	int scd_public;
+	int scd_private_instr;
+	int scd_adr_brk_inh;
+	int scd_adr_brk_cyc;
+
 	hword ir;
 };
 
@@ -158,11 +176,11 @@ struct KL10
 	word cache_data;
 	word ebus;
 	word sh;
-	int trap_mix;
+	int pi;
 
 	/* flip flops */
-	KL10regs p;	// previous state
 	KL10regs c;	// current state
+	KL10regs n;	// next state
 
 	Cword cram[2048];	// 1280 in model A
 	Dword dram[512];
@@ -182,6 +200,7 @@ struct KL10
 	int cram_sc_sel;
 	int cram_fe_load;
 	int cram_sh_armm_sel;
+	int cram_vma_sel;
 	int cram_cond;
 	int cram_spec;
 	int cram_num;	// bits 0-8
@@ -235,6 +254,9 @@ struct KL10
 	/* shift matrix control */
 	int shm_instr_format;
 
+	/* misc, TODO */
+	int con_pc_inc_inh;	// CON4
+
 	hword serial;
 };
 
@@ -263,9 +285,9 @@ fetchdr(KL10 *kl)
 	dw = kl->dram[kl->dr_adr];
 	kl->dram_a = dw.a>>9 & 7;
 	kl->dram_b = dw.a>>6 & 07;
-	if((kl->c.ir & 0777000) == 0254000){
+	if((kl->n.ir & 0777000) == 0254000){
 		kl->dram_j = dw.b & 01600;
-		kl->dram_j |= kl->c.ir>>5 & 017;
+		kl->dram_j |= kl->n.ir>>5 & 017;
 	}else{
 		kl->dram_j = dw.b & 01717;
 	}
@@ -290,15 +312,15 @@ update_adx(KL10 *kl)
 	word nadxa, nadxb;
 	word a, b;
 
-	adxa = kl->cram_ada & 4 ? 0 : kl->p.arx;
+	adxa = kl->cram_ada & 4 ? 0 : kl->c.arx;
 	adxa &= M36;
 	nadxa = ~adxa & M36;
 
 	switch(kl->cram_adb){
 	case 0: adxb = M36; break;	/* TODO: or 0? */
-	case 1: adxb = kl->p.brx<<1; break;	/* TODO: lower bits? */
-	case 2: adxb = kl->p.brx; break;
-	case 3: adxb = kl->p.arx<<2; break;	/* TODO: lower bits? */
+	case 1: adxb = kl->c.brx<<1; break;	/* TODO: lower bits? */
+	case 2: adxb = kl->c.brx; break;
+	case 3: adxb = kl->c.arx<<2; break;	/* TODO: lower bits? */
 	default: assert(0);	/* can't happen */
 	}
 	adxb &= M36;
@@ -409,9 +431,9 @@ update_ad(KL10 *kl)
 	word a, b;
 
 	switch(kl->cram_ada){
-	case 0:	ada = kl->p.ar; break;
-	case 1:	ada = kl->p.arx; break;
-	case 2:	ada = kl->p.mq; break;
+	case 0:	ada = kl->c.ar; break;
+	case 1:	ada = kl->c.arx; break;
+	case 2:	ada = kl->c.mq; break;
 	case 3:	ada = kl->vma_held_or_pc; break;	/* TODO, upper bits? */
 	default: ada = 0; break;
 	}
@@ -420,9 +442,9 @@ update_ad(KL10 *kl)
 
 	switch(kl->cram_adb){
 	case 0: adb = sxt36(kl->fm); break;	/* TODO: parity */
-	case 1: adb = sxt36(kl->p.br)<<1 | kl->p.brx>>35 & 1; break;
-	case 2: adb = sxt36(kl->p.br); break;
-	case 3: adb = sxt36(kl->p.ar)<<2 | kl->p.arx>>34 & 3; break;
+	case 1: adb = sxt36(kl->c.br)<<1 | kl->c.brx>>35 & 1; break;
+	case 2: adb = sxt36(kl->c.br); break;
+	case 3: adb = sxt36(kl->c.ar)<<2 | kl->c.arx>>34 & 3; break;
 	default: assert(0);	/* can't happen */
 	}
 	adb &= M38;
@@ -545,14 +567,14 @@ load_ar(KL10 *kl)
 	armm = kl->vma_in & MSEC | kl->serial;
 	switch(kl->cram_sh_armm_sel){
 	case 0: armm |= (word)kl->cram_num<<27; break;
-	case 1: armm |= kl->p.ar & S36 ? 0777000000000 : 0; break;
+	case 1: armm |= kl->c.ar & S36 ? 0777000000000 : 0; break;
 	case 2:
 		armm |= (word)(kl->scad&0377)<<27;
-		if(COND_AR_FM_EXP || kl->p.ar>>27 & kl->scad & 0400)
+		if(COND_AR_FM_EXP || kl->c.ar>>27 & kl->scad & 0400)
 			armm |= FB0;
 		break;
 	case 3:
-		armm |= ((word)kl->scad<<27)&MPOS | kl->p.ar&MSZ;
+		armm |= ((word)kl->scad<<27)&MPOS | kl->c.ar&MSZ;
 		break;
 	default: assert(0);	/* can't happen */
 	}
@@ -591,11 +613,11 @@ load_ar(KL10 *kl)
 		arm &= 0777777000000;
 
 	if(kl->ctl_ar_00_08_load)
-		SETMASK(kl->c.ar, arm, 0777000000000);
+		SETMASK(kl->n.ar, arm, 0777000000000);
 	if(kl->ctl_ar_09_17_load)
-		SETMASK(kl->c.ar, arm, 0000777000000);
+		SETMASK(kl->n.ar, arm, 0000777000000);
 	if(kl->ctl_arr_load)
-		SETMASK(kl->c.ar, arm, 0000000777777);
+		SETMASK(kl->n.ar, arm, 0000000777777);
 }
 
 void
@@ -610,7 +632,7 @@ load_arx(KL10 *kl)
 	case 0: arxl = 0; break;
 	case 1: arxl = kl->cache_data; break;
 	case 2: arxl = kl->ad; break;
-	case 3: arxl = kl->p.mq; break;
+	case 3: arxl = kl->c.mq; break;
 	case 4: arxl = kl->sh; break;
 	case 5: arxl = kl->adx<<1; break;
 	case 6: arxl = kl->adx; break;
@@ -621,29 +643,29 @@ load_arx(KL10 *kl)
 	case 0: arxr = 0; break;
 	case 1: arxr = kl->cache_data; break;
 	case 2: arxr = kl->ad; break;
-	case 3: arxr = kl->p.mq; break;
+	case 3: arxr = kl->c.mq; break;
 	case 4: arxr = kl->sh; break;
-	case 5: arxr = kl->adx<<1  | kl->p.mq>>35 & 1; break;
+	case 5: arxr = kl->adx<<1  | kl->c.mq>>35 & 1; break;
 	case 6: arxr = kl->adx; break;
 	case 7: arxr = kl->adx>>2; break;
 	default: assert(0);	/* can't happen */
 	}
 
-	kl->c.arx = LT(arxl) | RT(arxr);
+	kl->n.arx = LT(arxl) | RT(arxr);
 }
 
 void
 load_br(KL10 *kl)
 {
 	if(kl->cram_br)
-		kl->c.br = kl->p.ar;
+		kl->n.br = kl->c.ar;
 }
 
 void
 load_brx(KL10 *kl)
 {
 	if(kl->cram_brx)
-		kl->c.brx = kl->p.arx;
+		kl->n.brx = kl->c.arx;
 }
 
 void
@@ -653,7 +675,7 @@ load_mq(KL10 *kl)
 
 	if(kl->ctl_mq_sel < 2){
 		if(kl->ctl_mqm_en) switch(kl->ctl_mqm_sel){
-		case 0: mqm = kl->p.mq>>2 | kl->adx<<34; break;
+		case 0: mqm = kl->c.mq>>2 | kl->adx<<34; break;
 		case 1: mqm = kl->sh; break;
 		case 2: mqm = kl->ad; break;
 		case 3: mqm = M36; break;
@@ -665,21 +687,21 @@ load_mq(KL10 *kl)
 
 	switch(kl->ctl_mq_sel){
 	case 0:
-		kl->c.mq = mqm;
+		kl->n.mq = mqm;
 		break;
 	case 1:
-		kl->c.mq = mqm<<1 & 0444444444444 |
-		         kl->p.mq>>1 & 0333333333333;
+		kl->n.mq = mqm<<1 & 0444444444444 |
+		         kl->c.mq>>1 & 0333333333333;
 		break;
 	case 2:
-		kl->c.mq = kl->p.mq << 1;
-		kl->c.mq |= kl->ad_cry_n2;
+		kl->n.mq = kl->c.mq << 1;
+		kl->n.mq |= kl->ad_cry_n2;
 		break;
 	case 3:
 		break;
 	default: assert(0);	/* can't happen */
 	}
-	kl->c.mq &= M36;
+	kl->n.mq &= M36;
 }
 
 void
@@ -688,38 +710,38 @@ update_fm(KL10 *kl)
 	uint a, b;
 
 	if(kl->mcl_load_vma_context)
-		kl->c.apr_vma_block = kl->mcl_vma_prev_en ?
-			kl->p.apr_prev_block : kl->p.apr_current_block;
+		kl->n.apr_vma_block = kl->mcl_vma_prev_en ?
+			kl->c.apr_prev_block : kl->c.apr_current_block;
 
 	switch(kl->cram_fm_adr_sel){
 	case 0:
-		kl->apr_fm_adr = kl->p.ir>>5;
-		kl->apr_fm_block = kl->p.apr_current_block;
+		kl->apr_fm_adr = kl->c.ir>>5;
+		kl->apr_fm_block = kl->c.apr_current_block;
 		break;
 	case 1:
-		kl->apr_fm_adr = (kl->p.ir>>5)+1;
-		kl->apr_fm_block = kl->p.apr_current_block;
+		kl->apr_fm_adr = (kl->c.ir>>5)+1;
+		kl->apr_fm_block = kl->c.apr_current_block;
 		break;
 	case 2:
-		kl->apr_fm_adr = kl->p.arx >>
+		kl->apr_fm_adr = kl->c.arx >>
 			(kl->shm_instr_format ? 18 : 30);
 		kl->apr_fm_block = kl->mcl_xr_previous ?
-			kl->p.apr_prev_block : kl->p.apr_current_block;
+			kl->c.apr_prev_block : kl->c.apr_current_block;
 		break;
 	case 3:
-		kl->apr_fm_adr = kl->p.vma;
-		kl->apr_fm_block = kl->p.apr_vma_block;
+		kl->apr_fm_adr = kl->c.vma;
+		kl->apr_fm_block = kl->c.apr_vma_block;
 		break;
 	case 4:
-		kl->apr_fm_adr = (kl->p.ir>>5)+2;
-		kl->apr_fm_block = kl->p.apr_current_block;
+		kl->apr_fm_adr = (kl->c.ir>>5)+2;
+		kl->apr_fm_block = kl->c.apr_current_block;
 		break;
 	case 5:
-		kl->apr_fm_adr = (kl->p.ir>>5)+3;
-		kl->apr_fm_block = kl->p.apr_current_block;
+		kl->apr_fm_adr = (kl->c.ir>>5)+3;
+		kl->apr_fm_block = kl->c.apr_current_block;
 		break;
 	case 6:
-		a = kl->p.ir>>5;
+		a = kl->c.ir>>5;
 		b = kl->cram_num;
 		switch(kl->cram_num>>4 & 037){
 		/* Arithmetic */
@@ -757,7 +779,7 @@ update_fm(KL10 *kl)
 		case 036: kl->apr_fm_adr = a & b; break;
 		case 037: kl->apr_fm_adr = a; break;
 		}
-		kl->apr_fm_block = kl->p.apr_current_block;
+		kl->apr_fm_block = kl->c.apr_current_block;
 		break;
 	case 7:
 		kl->apr_fm_adr = kl->cram_num;
@@ -775,17 +797,42 @@ void
 write_fm(KL10 *kl)
 {
 	if(kl->con_fm_write)
-		kl->fastmem[kl->apr_fm_adr | kl->apr_fm_block<<4] = kl->p.ar;
+		kl->fastmem[kl->apr_fm_adr | kl->apr_fm_block<<4] = kl->c.ar;
 }
 
 void
 update_vma_ad(KL10 *kl)
 {
 	if(kl->cram_cond >= COND_VMA_FM_NUM &&
-	   kl->cram_cond <= COND_VMA_FM_NUM_PI_2)
-		kl->vma_ad = kl->cram_num&0760 | kl->trap_mix;
-	else
-		kl->vma_ad = kl->p.pc + kl->trap_mix + kl->mcl_vma_inc;
+	   kl->cram_cond <= COND_VMA_FM_NUM_PI_2){
+		uint trap_mix;
+		switch(kl->cram_cond){
+		case COND_VMA_FM_NUM:
+			trap_mix = kl->cram_num;
+			 break;
+		case COND_VMA_FM_NUM_TRAP:
+			trap_mix = kl->cram_num & 014 | kl->c.scd_trap_cyc;
+			break;
+		case COND_VMA_FM_NUM_MODE:
+			trap_mix = kl->cram_num & 010 |
+				kl->c.scd_user<<2 |
+				kl->c.scd_public<<1 |
+				!!kl->c.scd_trap_cyc;
+			break;
+		case COND_VMA_FM_NUM_AR32_35:
+			trap_mix = kl->c.ar;
+			break;
+		case COND_VMA_FM_NUM_PI_2:
+			trap_mix = kl->pi << 1;
+			break;
+		}
+		if(kl->cram_vma_sel&2 && !kl->con_pc_inc_inh)
+			trap_mix |= 1;
+		trap_mix &= 017;
+		kl->vma_ad = kl->cram_num&0760 | trap_mix;
+	}else
+		// + trap_mix, but it's 0
+		kl->vma_ad = kl->c.pc + kl->mcl_vma_inc;
 	kl->vma_ad &= M18;
 }
 
@@ -793,9 +840,9 @@ void
 update_vma_held_or_pc(KL10 *kl)
 {
 	if(kl->cram_cond == COND_SEL_VMA)
-		kl->vma_held_or_pc = kl->p.vma_held;
+		kl->vma_held_or_pc = kl->c.vma_held;
 	else
-		kl->vma_held_or_pc = kl->p.pc;
+		kl->vma_held_or_pc = kl->c.pc;
 }
 
 void
@@ -804,9 +851,9 @@ load_vma(KL10 *kl)
 	word vma_mix;
 
 	if(kl->mcl_vmax_en) switch(kl->mcl_vmax_sel){
-	case 0: kl->vma_in = kl->p.vma; break;
-	case 1: kl->vma_in = kl->p.pc; break;
-	case 2: kl->vma_in = kl->p.vma_prev_sec; break;
+	case 0: kl->vma_in = kl->c.vma; break;
+	case 1: kl->vma_in = kl->c.pc; break;
+	case 2: kl->vma_in = kl->c.vma_prev_sec; break;
 	case 3: kl->vma_in = kl->ad; break;
 	default: assert(0);	/* can't happen */
 	}else
@@ -817,10 +864,10 @@ load_vma(KL10 *kl)
 	case 0:
 		break;
 	case 1:
-		kl->c.vma = kl->p.vma+1 & M24;
+		kl->n.vma = kl->c.vma+1 & M24;
 		break;
 	case 2:
-		kl->c.vma = kl->p.vma-1 & M24;
+		kl->n.vma = kl->c.vma-1 & M24;
 		break;
 	case 3:
 		if(kl->mcl_vma_fm_ad)
@@ -829,7 +876,7 @@ load_vma(KL10 *kl)
 			update_vma_ad(kl);
 			vma_mix = kl->vma_ad;
 		}
-		kl->c.vma = kl->vma_in | vma_mix & M18;
+		kl->n.vma = kl->vma_in | vma_mix & M18;
 		break;
 	default: assert(0);	/* can't happen */
 	}
@@ -839,23 +886,23 @@ void
 load_prev_sec(KL10 *kl)
 {
 	if(kl->con_load_prev_context)
-		kl->c.vma_prev_sec = kl->ad & MSEC;
+		kl->n.vma_prev_sec = kl->ad & MSEC;
 }
 
 void
 load_vma_held(KL10 *kl)
 {
 	if(kl->mcl_load_vma_held)
-		kl->c.vma_held = kl->p.vma & M23;
+		kl->n.vma_held = kl->c.vma & M23;
 }
 
 void
 load_pc(KL10 *kl)
 {
 	if(kl->ctl_load_pc){
-		kl->c.pc = kl->p.vma & M23;
-		if((kl->p.vma & MSEC) == 0)
-			kl->c.pc |= 040000000;
+		kl->n.pc = kl->c.vma & M23;
+		if((kl->c.vma & MSEC) == 0)
+			kl->n.pc |= 040000000;
 	}
 }
 
@@ -864,17 +911,17 @@ update_sh(KL10 *kl)
 {
 	switch(kl->cram_sh_armm_sel){
 	case 0:
-		if(kl->p.sc < 36)
-			kl->sh = kl->p.ar << kl->p.sc |
-				kl->p.arx >> 36-kl->p.sc;
+		if(kl->c.sc < 36)
+			kl->sh = kl->c.ar << kl->c.sc |
+				kl->c.arx >> 36-kl->c.sc;
 		else
-	case 2:		kl->sh = kl->p.arx;
+	case 2:		kl->sh = kl->c.arx;
 		break;
 	case 1:
-		kl->sh = kl->p.ar;
+		kl->sh = kl->c.ar;
 		break;
 	case 3:
-		kl->sh = RT(kl->p.ar)<<18 | LT(kl->p.ar)>>18;
+		kl->sh = RT(kl->c.ar)<<18 | LT(kl->c.ar)>>18;
 		break;
 	default: assert(0);	/* can't happen */
 	}
@@ -887,11 +934,11 @@ update_scad(KL10 *kl)
 	uint scada, scadb;
 
 	switch(kl->cram_scada_sel){
-	case 0: scada = kl->p.fe; break;
-	case 1: scada = kl->p.ar>>30 & M6; break;
+	case 0: scada = kl->c.fe; break;
+	case 1: scada = kl->c.ar>>30 & M6; break;
 	case 2:
-		scada = kl->p.ar>>27 & M8;
-		if(kl->p.ar & FB0)
+		scada = kl->c.ar>>27 & M8;
+		if(kl->c.ar & FB0)
 			scada ^= M8;
 		break;
 	case 3: scada = kl->cram_num | kl->cram_num<<1 & 01000; break;
@@ -905,9 +952,9 @@ update_scad(KL10 *kl)
 	scada |= scada<<1 & 02000;
 
 	switch(kl->cram_scadb_sel){
-	case 0: scadb = kl->p.sc; break;
-	case 1: scadb = kl->p.ar>>24 & M6; break;
-	case 2: scadb = kl->p.ar>>27 & M9; break;
+	case 0: scadb = kl->c.sc; break;
+	case 1: scadb = kl->c.ar>>24 & M6; break;
+	case 2: scadb = kl->c.ar>>27 & M9; break;
 	case 3: scadb = kl->cram_num; break;
 	default: assert(0);	/* can't happen */
 	}
@@ -934,24 +981,24 @@ load_sc_fe(KL10 *kl)
 	uint scm;
 
 	switch(kl->cram_sc_sel<<1 | kl->cram_spec==SPEC_SCM_ALT){
-	case 0: scm = kl->p.sc; break;
-	case 1: scm = kl->p.fe; break;
+	case 0: scm = kl->c.sc; break;
+	case 1: scm = kl->c.fe; break;
 	case 2: scm = kl->scad; break;
 	case 3:
-		scm = kl->p.ar & M8;
-		if(kl->p.ar & FB18)
+		scm = kl->c.ar & M8;
+		if(kl->c.ar & FB18)
 			scm |= 01400;
 		break;
 	default: assert(0);	/* can't happen */
 	}
-	kl->c.sc = scm & M10;
+	kl->n.sc = scm & M10;
 
 	if(kl->cram_fe_load){
-		kl->c.fe = kl->scad & M10;
-		kl->c.fe |= kl->c.fe<<1 & 02000;
+		kl->n.fe = kl->scad & M10;
+		kl->n.fe |= kl->n.fe<<1 & 02000;
 	}else if(kl->cram_cond == COND_FE_SHRT){
-		kl->c.fe >>= 1;
-		kl->c.fe |= kl->c.fe<<1 & 02000;
+		kl->n.fe >>= 1;
+		kl->n.fe |= kl->n.fe<<1 & 02000;
 	}
 	// TODO: reset. shift left?
 }
@@ -959,7 +1006,7 @@ load_sc_fe(KL10 *kl)
 void
 tick(KL10 *kl)
 {
-	kl->p = kl->c;
+	kl->c = kl->n;
 }
 
 void
@@ -976,10 +1023,10 @@ test(KL10 *kl)
 	kl->cram_ada = 0;
 	kl->cram_adb = 2;
 
-	kl->c.ar = 0400123012300;
-	kl->c.br = 0001234333000;
-	kl->c.arx = 0400000012300;
-	kl->c.brx = 0400000000000;
+	kl->n.ar = 0400123012300;
+	kl->n.br = 0001234333000;
+	kl->n.arx = 0400000012300;
+	kl->n.brx = 0400000000000;
 
 	kl->ctl_adx_cry_36 = 0;
 	kl->ctl_ad_long = 0;
@@ -989,9 +1036,9 @@ test(KL10 *kl)
 	update_adx(kl);
 	update_ad(kl);
 
-	printf("AR: %012lo, BR: %012lo\n", kl->p.ar, kl->p.br);
+	printf("AR: %012lo, BR: %012lo\n", kl->c.ar, kl->c.br);
 	printf("AD: %012lo\n", kl->ad);
-	printf("ARX: %012lo, BRX: %012lo\n", kl->p.arx, kl->p.brx);
+	printf("ARX: %012lo, BRX: %012lo\n", kl->c.arx, kl->c.brx);
 	printf("ADX: %012lo\n", kl->adx);
 	printf("\n");
 
@@ -1009,28 +1056,27 @@ test(KL10 *kl)
 	tick(kl);
 	load_ar(kl);
 
-	printf("AR: %012lo, BR: %012lo\n", kl->p.ar, kl->p.br);
+	printf("AR: %012lo, BR: %012lo\n", kl->c.ar, kl->c.br);
 	printf("AD: %012lo\n", kl->ad);
-	printf("ARX: %012lo, BRX: %012lo\n", kl->p.arx, kl->p.brx);
+	printf("ARX: %012lo, BRX: %012lo\n", kl->c.arx, kl->c.brx);
 	printf("ADX: %012lo\n", kl->adx);
 	printf("\n");
 
 
 	kl->adx = 0;
-	kl->c.mq = 0123456112233;
+	kl->n.mq = 0123456112233;
 	kl->ctl_mqm_en = 1;
 	kl->ctl_mqm_sel = 0;
 	kl->ctl_mq_sel = 2;
 	tick(kl);
 	load_mq(kl);
-	printf("MQ: %012lo\n", kl->c.mq);
+	printf("MQ: %012lo\n", kl->n.mq);
 	printf("\n");
 
-	kl->c.pc = 0654321;
-	kl->c.vma = 012123456;
-	kl->c.vma_prev_sec = 0;
+	kl->n.pc = 0654321;
+	kl->n.vma = 012123456;
+	kl->n.vma_prev_sec = 0;
 	kl->mcl_vma_inc = 1;
-	kl->trap_mix = 0;
 	kl->cram_num = 0777;
 	kl->con_vma_sel = 3;
 	kl->mcl_vmax_en = 1;
@@ -1039,19 +1085,19 @@ test(KL10 *kl)
 	kl->cram_cond = COND_VMA_FM_NUM;
 	tick(kl);
 	load_vma(kl);
-	printf("VMA: %08o\n", kl->c.vma);
+	printf("VMA: %08o\n", kl->n.vma);
 	printf("\n");
 
 	kl->ctl_load_pc = 1;
 	tick(kl);
 	load_pc(kl);
-	printf("PC: %08o\n", kl->c.pc);
+	printf("PC: %08o\n", kl->n.pc);
 	printf("\n");
 
-	kl->c.ir = 0000740;
-	kl->c.arx = 0170017000000;
-	kl->c.apr_prev_block = 3;
-	kl->c.apr_current_block = 4;
+	kl->n.ir = 0000740;
+	kl->n.arx = 0170017000000;
+	kl->n.apr_prev_block = 3;
+	kl->n.apr_current_block = 4;
 	kl->mcl_xr_previous = 1;
 	kl->cram_fm_adr_sel = 2;
 	kl->shm_instr_format = 0;
@@ -1060,18 +1106,18 @@ test(KL10 *kl)
 	printf("FM: %012lo\n", kl->fm);
 	printf("\n");
 
-	kl->c.ar = 0123456654321;
-	kl->c.arx = 0112233445566;
-	kl->c.sc = 6;
+	kl->n.ar = 0123456654321;
+	kl->n.arx = 0112233445566;
+	kl->n.sc = 6;
 	kl->cram_sh_armm_sel = 0;
 	tick(kl);
 	update_sh(kl);
 	printf("SH: %012lo\n", kl->sh);
 	printf("\n");
 
-	kl->c.fe = 01777;
-	kl->c.sc = 01321;
-	kl->c.ar = 077451600321;
+	kl->n.fe = 01777;
+	kl->n.sc = 01321;
+	kl->n.ar = 077451600321;
 	kl->cram_num = 01123;
 	kl->cram_scada_sel = 3;
 	kl->cram_scadb_sel = 2;
@@ -1081,43 +1127,43 @@ test(KL10 *kl)
 	printf("SCAD: %04o\n", kl->scad);
 
 	kl->scad = 01111;
-	kl->c.sc = 01234;
-	kl->c.fe = 03432;
+	kl->n.sc = 01234;
+	kl->n.fe = 03432;
 	kl->cram_sc_sel = 1;
 	kl->cram_spec = SPEC_SCM_ALT;
 	kl->cram_fe_load = 0;
 	kl->cram_cond = COND_FE_SHRT;
 	tick(kl);
 	load_sc_fe(kl);
-	printf("SC: %04o FE: %04o\n", kl->c.sc, kl->c.fe);
+	printf("SC: %04o FE: %04o\n", kl->n.sc, kl->n.fe);
 
 
 	kl->vma_in = 077777777;
 	kl->cram_num = 0777;
 	kl->scad = 0321;
-	kl->p.ar = 0701200000000;
+	kl->c.ar = 0701200000000;
 	kl->cram_sh_armm_sel = 3;
 	load_ar(kl);
 
 /*
 	int i, j;
-	kl->c.ar = 0;
+	kl->n.ar = 0;
 	for(i = 0; i < 4; i++){
-		kl->c.br = 0;
+		kl->n.br = 0;
 		for(j = 0; j < 4; j++){
 			tick(kl);
 			update_adx(kl);
 			update_ad(kl);
 			printf("%o + %o = %02o; %d %d %d\n",
-				kl->c.ar>>34 & 3,
-				kl->c.br>>34 & 3,
-				kl->c.ad>>34 & 017,
-				kl->c.ad_cry_n2,
-				kl->c.ad_overflow,
-				kl->c.ad_cry_1);
-			kl->c.br += 0200000000000;
+				kl->n.ar>>34 & 3,
+				kl->n.br>>34 & 3,
+				kl->n.ad>>34 & 017,
+				kl->n.ad_cry_n2,
+				kl->n.ad_overflow,
+				kl->n.ad_cry_1);
+			kl->n.br += 0200000000000;
 		}
-		kl->c.ar += 0200000000000;
+		kl->n.ar += 0200000000000;
 	}
 */
 
@@ -1149,28 +1195,28 @@ dumpdram(KL10 *kl)
 	};
 	int i;
 	/* regular instructions */
-	for(kl->c.ir = 0; kl->c.ir < 0700000; kl->c.ir += 01000){
-		kl->dr_adr = getdradr(kl->c.ir);
+	for(kl->n.ir = 0; kl->n.ir < 0700000; kl->n.ir += 01000){
+		kl->dr_adr = getdradr(kl->n.ir);
 		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->c.ir, kl->dr_adr,
+		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
 			A[kl->dram_a],
 			B[kl->dram_b],
 			kl->dram_j);
 	}
 	/* jrst */
-	for(kl->c.ir = 0254000; kl->c.ir < 0255000; kl->c.ir += 040){
-		kl->dr_adr = getdradr(kl->c.ir);
+	for(kl->n.ir = 0254000; kl->n.ir < 0255000; kl->n.ir += 040){
+		kl->dr_adr = getdradr(kl->n.ir);
 		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->c.ir, kl->dr_adr,
+		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
 			A[kl->dram_a],
 			B[kl->dram_b],
 			kl->dram_j);
 	}
 	/* IO */
-	for(kl->c.ir = 0700000; kl->c.ir < 01000000; kl->c.ir += 040){
-		kl->dr_adr = getdradr(kl->c.ir);
+	for(kl->n.ir = 0700000; kl->n.ir < 01000000; kl->n.ir += 040){
+		kl->dr_adr = getdradr(kl->n.ir);
 		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->c.ir, kl->dr_adr,
+		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
 			A[kl->dram_a],
 			B[kl->dram_b],
 			kl->dram_j);

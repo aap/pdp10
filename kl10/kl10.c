@@ -138,6 +138,8 @@ struct KL10regs
 	uint sc;	/* bits sign,0-9 */
 	uint fe;	/* bits sign,0-9 */
 
+	Cword cram;	/* latched control word */
+
 	/* PC flags, badly named SCD */
 	// TODO: use bits?
 	int scd_ov;
@@ -189,6 +191,8 @@ struct KL10
 	int dr_adr;
 	int dram_a, dram_b, dram_j;
 
+	uint cra_adr;
+	int cram_j;
 	int cram_ad, cram_ada, cram_adb;
 	int cram_ar, cram_arx;
 	int cram_br, cram_brx;
@@ -201,6 +205,8 @@ struct KL10
 	int cram_fe_load;
 	int cram_sh_armm_sel;
 	int cram_vma_sel;
+	int cram_t;
+	int cram_mem;
 	int cram_cond;
 	int cram_spec;
 	int cram_num;	// bits 0-8
@@ -291,11 +297,6 @@ fetchdr(KL10 *kl)
 	}else{
 		kl->dram_j = dw.b & 01717;
 	}
-}
-
-void
-fetchcr(KL10 *kl)
-{
 }
 
 word
@@ -809,7 +810,7 @@ update_vma_ad(KL10 *kl)
 		switch(kl->cram_cond){
 		case COND_VMA_FM_NUM:
 			trap_mix = kl->cram_num;
-			 break;
+			break;
 		case COND_VMA_FM_NUM_TRAP:
 			trap_mix = kl->cram_num & 014 | kl->c.scd_trap_cyc;
 			break;
@@ -1000,7 +1001,103 @@ load_sc_fe(KL10 *kl)
 		kl->n.fe >>= 1;
 		kl->n.fe |= kl->n.fe<<1 & 02000;
 	}
-	// TODO: reset. shift left?
+}
+
+void
+update_cram(KL10 *kl)
+{
+	kl->cram_j = kl->c.cram.a & 03777;
+	kl->cram_ad = kl->c.cram.b>>6 & 077;
+	kl->cram_ada = kl->c.cram.b>>3 & 7;
+	kl->cram_adb = kl->c.cram.b & 3;
+	kl->cram_ar = kl->c.cram.c>>9 & 7;
+	kl->cram_arx = kl->c.cram.c>>6 & 7;
+	kl->cram_br = kl->c.cram.c>>5 & 1;
+	kl->cram_brx = kl->c.cram.c>>4 & 1;
+	kl->cram_mq = kl->c.cram.c>>3 & 1;
+	kl->cram_fm_adr_sel = kl->c.cram.c & 7;
+	kl->cram_scad_sel = kl->c.cram.d>>9 & 7;
+	kl->cram_scada_sel = kl->c.cram.d>>6 & 7;
+	kl->cram_scadb_sel = kl->c.cram.d>>3 & 7;
+	kl->cram_sc_sel = kl->c.cram.d>>1 & 1;
+	kl->cram_fe_load = kl->c.cram.d & 1;
+	kl->cram_sh_armm_sel = kl->c.cram.e>>9 & 3;
+	kl->cram_vma_sel = kl->c.cram.e>>6 & 3;
+	kl->cram_t = kl->c.cram.e>>4 & 3;
+	kl->cram_mem = kl->c.cram.e & 017;
+	kl->cram_cond = kl->c.cram.f>>6 & 077;
+	kl->cram_spec = kl->c.cram.f & 077;
+	// TODO: bit 74???
+	kl->cram_num = kl->c.cram.g & 0777;
+}
+
+void
+printcram(KL10 *kl)
+{
+#include "disasm.inc"
+	printf("CRAM:\n");
+	printf(" J/%o\n", kl->cram_j);
+	printf(" AD/%s\tADA/%s\tADB/%s\n",
+		ad_def[kl->cram_ad],
+		ada_def[kl->cram_ada], adb_def[kl->cram_adb]);
+	printf(" AR/%s\tARX/%s\n", ar_def[kl->cram_ar], arx_def[kl->cram_arx]);
+	printf(" BR/%s\tBRX/%s\n", br_def[kl->cram_br], brx_def[kl->cram_brx]);
+	printf(" MQ/%o\tFM/%s\n", kl->cram_mq, fm_def[kl->cram_fm_adr_sel]);
+	printf(" SCAD/%s\tSCADA/%s\tSCADB/%s\n",
+		scad_def[kl->cram_scad_sel], scada_def[kl->cram_scada_sel],
+		scadb_def[kl->cram_scadb_sel]);
+	printf(" SC/%s\tFE/%s\n", sc_def[kl->cram_sc_sel],
+		fe_def[kl->cram_fe_load]);
+	printf(" SH/%s\tARMM/%s\tVMA/%s\n",
+		sh_def[kl->cram_sh_armm_sel],
+		armm_def[kl->cram_sh_armm_sel],
+		vma_def[kl->cram_vma_sel]);
+	printf(" TIME/%s\tMEM/%s\n",
+		t_def[kl->cram_t], mem_def[kl->cram_mem]);
+	printf(" %s/%s\t",
+		kl->cram_cond & 040 ? "SKIP" : "COND",
+		cond_skip_def[kl->cram_cond]);
+	printf("%s/%s\t",
+		9>>(kl->cram_spec>>3) & 1 ? "DISP" : "SPEC",
+		disp_spec_def[kl->cram_spec]);
+	printf("#/%o\n", kl->cram_num);
+}
+
+void
+step(KL10 *kl)
+{
+	/* Combinational logic */
+
+	update_cram(kl);
+
+	kl->cra_adr = kl->cram_j;	// TODO
+
+	/* Sequential logic */
+
+	/* latch cram */
+	kl->n.cram = kl->cram[kl->cra_adr];
+
+	printcram(kl);
+
+	kl->c = kl->n;
+}
+
+void
+reset(KL10 *kl)
+{
+	kl->serial = 0162534;
+
+	/* MR RESET can be tied to a
+	 * shift signal of a shift register with
+	 * shift input 0. Since it is asserted
+	 * for a lot of clock ticks, this zeroes
+	 * a shift register. */
+	memset(&kl->n.cram, 0, sizeof(Cword));
+	kl->n.fe = 0;
+
+	/* TODO */
+
+	kl->c = kl->n;
 }
 
 void
@@ -1283,12 +1380,14 @@ main()
 
 	kl10 = malloc(sizeof(KL10));
 	memset(kl10, 0, sizeof(KL10));
-	kl10->serial = 0162534;
+	reset(kl10);
 
 	loaducode(kl10, "ucode/u1.txt");
 //	dumpdram(kl10);
 
-	test(kl10);
+	step(kl10);
+	step(kl10);
+//	test(kl10);
 
 	return 0;
 }

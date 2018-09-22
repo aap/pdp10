@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <assert.h>
 
 #define nil NULL
@@ -29,6 +30,18 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 #define S36 0400000000000ULL
 #define SXT36 (~M36)
 #define FB0 0400000000000ULL
+#define FB1 0200000000000ULL
+#define FB2 0100000000000ULL
+#define FB3 0040000000000ULL
+#define FB4 0020000000000ULL
+#define FB5 0010000000000ULL
+#define FB6 0004000000000ULL
+#define FB7 0002000000000ULL
+#define FB8 0001000000000ULL
+#define FB9 0000400000000ULL
+#define FB10 0000200000000ULL
+#define FB11 0000100000000ULL
+#define FB12 0000040000000ULL
 #define FB18 0000000400000ULL
 #define MPOS 0770000000000ULL
 #define MSZ 0007700000000ULL
@@ -36,7 +49,9 @@ typedef uint32_t aword;	/* A PDP-10 address word (23 bits) */
 #define LT(w) ((w) & L18)
 #define RT(w) ((w) & R18)
 
+// TODO: figure out which is more efficient
 #define SETMASK(l, r, m) l = ((l)&~(m) | (r)&(m))
+//#define SETMASK(l, r, m) l ^= ((l)^(r)) & (m)
 
 enum
 {
@@ -98,7 +113,25 @@ enum
 	SPEC_AD_LONG = 027
 };
 
+enum
+{
+	FLG_OV = FB0,
+	FLG_CRY0 = FB1,
+	FLG_CRY1 = FB2,
+	FLG_FOV = FB3,
+	FLG_FPD = FB4,
+	FLG_USER = FB5,
+	FLG_USER_IOT = FB6,
+	FLG_PUBLIC = FB7,
+	FLG_ADR_BRK_INH = FB8,
+	FLG_TRAP_REQ_2 = FB9,
+	FLG_TRAP_REQ_1 = FB10,
+	FLG_FXU = FB11,
+	FLG_DIV_CHK = FB12
+};
+
 #define COND_AR_FM_EXP (kl->cram_cond == COND_REG_CTL && kl->cram_num & 010)
+#define KERNEL_MODE ((kl->c.pc_flags & (FLG_USER|FLG_PUBLIC)) == 0)
 
 /* A DRAM word */
 typedef struct Dword Dword;
@@ -141,30 +174,23 @@ struct KL10regs
 	Cword cram;	/* latched control word */
 
 	/* PC flags, badly named SCD */
-	// TODO: use bits?
-	int scd_ov;
-	int scd_cry0;
-	int scd_cry1;
-	int scd_fov;
-	int scd_fxu;
-	int scd_div_chk;
-	int scd_trap_req;
+	word pc_flags;	/* everything visible in PC */
 	int scd_trap_cyc;
-	int scd_fpd;
 	int scd_pcp;
-	int scd_user;
-	int scd_user_iot;
-	int scd_public;
 	int scd_private_instr;
-	int scd_adr_brk_inh;
 	int scd_adr_brk_cyc;
 
 	hword ir;
+
+	/* control flops */
+	int con_pi_cycle;	// CON5
+	int con_mem_cycle;	// CON5
 };
 
 typedef struct KL10 KL10;
 struct KL10
 {
+
 	/* combinational logic */
 	word ad, adx;
 	int ad_cry_n2, ad_cry_1, ad_overflow;
@@ -192,6 +218,7 @@ struct KL10
 	int dram_a, dram_b, dram_j;
 
 	uint cra_adr;
+	uint cra_adr_dbg;
 	int cram_j;
 	int cram_ad, cram_ada, cram_adb;
 	int cram_ar, cram_arx;
@@ -265,6 +292,21 @@ struct KL10
 
 	hword serial;
 };
+
+int dotrace;
+
+void
+trace(char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	if(dotrace){
+		fprintf(stdout, "  ");
+		vfprintf(stdout, fmt, ap);
+	}
+	va_end(ap);
+}
+
 
 int
 getdradr(hword ir)
@@ -816,8 +858,8 @@ update_vma_ad(KL10 *kl)
 			break;
 		case COND_VMA_FM_NUM_MODE:
 			trap_mix = kl->cram_num & 010 |
-				kl->c.scd_user<<2 |
-				kl->c.scd_public<<1 |
+				!!(kl->c.pc_flags&FLG_USER)<<2 |
+				!!(kl->c.pc_flags&FLG_PUBLIC)<<1 |
 				!!kl->c.scd_trap_cyc;
 			break;
 		case COND_VMA_FM_NUM_AR32_35:
@@ -1003,6 +1045,76 @@ load_sc_fe(KL10 *kl)
 	}
 }
 
+/* TODO: replace this losing code */
+void
+load_pc_flags(KL10 *kl)
+{
+	if(kl->cram_spec == SPEC_FLAG_CTL){
+		int load_flags, portal, jfcl, leave_user;
+		load_flags = !!(kl->cram_num & 020);
+		portal = !!(kl->cram_num & 010);
+		jfcl = !!(kl->cram_num & 0200);
+		leave_user = !(kl->cram_num & 0400) ||
+			!(kl->cram_num & 2) && KERNEL_MODE;
+
+		/* user bit */
+		if(load_flags && kl->c.ar&FLG_USER)
+			kl->n.pc_flags |= FLG_USER;
+		else if(leave_user)
+			kl->n.pc_flags &= ~FLG_USER;
+
+		/* user iot bit */
+		if(load_flags && kl->c.ar&FLG_USER_IOT &&
+		   (leave_user || !(kl->c.pc_flags&FLG_USER)))
+			kl->n.pc_flags |= FLG_USER_IOT;
+		else if(leave_user ||
+		   (load_flags && !(kl->c.ar&FLG_USER_IOT)))
+			kl->n.pc_flags &= ~FLG_USER_IOT;
+
+		/* public bit */
+		if(load_flags && kl->c.ar&FLG_PUBLIC)
+			kl->n.pc_flags |= FLG_PUBLIC;
+		else if(leave_user ||
+		   portal && kl->c.scd_private_instr ||
+		   load_flags && kl->c.ar&FLG_USER && !(kl->c.pc_flags&FLG_USER))
+			kl->n.pc_flags &= ~FLG_PUBLIC;
+		// TODO: page stuff somewhere else
+
+		/* private instr bit */
+
+		/* adr brk inh bit */
+		if(load_flags && kl->c.ar&FLG_ADR_BRK_INH)
+			kl->n.pc_flags |= FLG_ADR_BRK_INH;
+		else if(load_flags)
+			kl->n.pc_flags &= ~FLG_ADR_BRK_INH;
+		// TODO: instr abort somewhere else
+
+		/* adr brk cyc bit */
+		if(load_flags)
+			kl->n.scd_adr_brk_cyc = 0;
+		// TODO: nicond somewhere else
+
+
+		if(load_flags){
+			word m;
+			m = FLG_OV | FLG_CRY0 | FLG_CRY1 |
+				FLG_FOV | FLG_FXU | FLG_DIV_CHK |
+				FLG_FPD | FLG_TRAP_REQ_1 | FLG_TRAP_REQ_2;
+			SETMASK(kl->n.pc_flags, kl->c.ar, m);
+		}
+//printf("%d %d %d %d\n", kl->n.scd_trap_cyc, kl->n.scd_pcp, kl->n.scd_private_instr, kl->n.scd_adr_brk_cyc);
+	}else if(kl->cram_spec == SPEC_SAVE_FLAGS && kl->c.con_pi_cycle){
+		/* PI&SAVE FLAGS, implies LEAVE USER */
+
+		kl->n.pc_flags &= ~FLG_USER;
+
+		if(kl->c.pc_flags&FLG_USER)
+			kl->n.pc_flags |= FLG_USER_IOT;
+		else
+			kl->n.pc_flags &= ~FLG_USER_IOT;
+	}
+}
+
 void
 update_cram(KL10 *kl)
 {
@@ -1035,53 +1147,124 @@ void
 printcram(KL10 *kl)
 {
 #include "disasm.inc"
-	printf("CRAM:\n");
-	printf(" J/%o\n", kl->cram_j);
-	printf(" AD/%s\tADA/%s\tADB/%s\n",
+	trace("CRAM %04o:\n", kl->cra_adr_dbg);
+	trace(" J/%o\n", kl->cram_j);
+	trace(" AD/%s\tADA/%s\tADB/%s\n",
 		ad_def[kl->cram_ad],
 		ada_def[kl->cram_ada], adb_def[kl->cram_adb]);
-	printf(" AR/%s\tARX/%s\n", ar_def[kl->cram_ar], arx_def[kl->cram_arx]);
-	printf(" BR/%s\tBRX/%s\n", br_def[kl->cram_br], brx_def[kl->cram_brx]);
-	printf(" MQ/%o\tFM/%s\n", kl->cram_mq, fm_def[kl->cram_fm_adr_sel]);
-	printf(" SCAD/%s\tSCADA/%s\tSCADB/%s\n",
+	trace(" AR/%s\tARX/%s\n", ar_def[kl->cram_ar], arx_def[kl->cram_arx]);
+	trace(" BR/%s\tBRX/%s\n", br_def[kl->cram_br], brx_def[kl->cram_brx]);
+	trace(" MQ/%o\tFM/%s\n", kl->cram_mq, fm_def[kl->cram_fm_adr_sel]);
+	trace(" SCAD/%s\tSCADA/%s\tSCADB/%s\n",
 		scad_def[kl->cram_scad_sel], scada_def[kl->cram_scada_sel],
 		scadb_def[kl->cram_scadb_sel]);
-	printf(" SC/%s\tFE/%s\n", sc_def[kl->cram_sc_sel],
+	trace(" SC/%s\tFE/%s\n", sc_def[kl->cram_sc_sel],
 		fe_def[kl->cram_fe_load]);
-	printf(" SH/%s\tARMM/%s\tVMA/%s\n",
+	trace(" SH/%s\tARMM/%s\tVMA/%s\n",
 		sh_def[kl->cram_sh_armm_sel],
 		armm_def[kl->cram_sh_armm_sel],
 		vma_def[kl->cram_vma_sel]);
-	printf(" TIME/%s\tMEM/%s\n",
+	trace(" TIME/%s\tMEM/%s\n",
 		t_def[kl->cram_t], mem_def[kl->cram_mem]);
-	printf(" %s/%s\t",
+	trace(" %s/%s\t",
 		kl->cram_cond & 040 ? "SKIP" : "COND",
 		cond_skip_def[kl->cram_cond]);
-	printf("%s/%s\t",
+	trace("%s/%s\t",
 		9>>(kl->cram_spec>>3) & 1 ? "DISP" : "SPEC",
 		disp_spec_def[kl->cram_spec]);
-	printf("#/%o\n", kl->cram_num);
+	trace("#/%o\n", kl->cram_num);
 }
 
 void
-step(KL10 *kl)
+printdp(KL10 *kl)
 {
-	/* Combinational logic */
-
-	update_cram(kl);
-
-	kl->cra_adr = kl->cram_j;	// TODO
-
-	/* Sequential logic */
-
-	/* latch cram */
-	kl->n.cram = kl->cram[kl->cra_adr];
-
-	printcram(kl);
-
-	kl->c = kl->n;
+	trace("AR/%012lo ARX/%012lo MQ/%012lo\n",
+		kl->n.ar, kl->n.arx, kl->n.mq);
+	trace("BR/%012lo BRX/%012lo\n", kl->n.br, kl->n.brx);
+	trace("AD/%012lo ADX/%012lo\n", kl->ad, kl->adx);
+	trace("PC/%012lo VMA/%08lo\n", kl->n.pc | kl->n.pc_flags, kl->n.vma);
 }
 
+/*
+ * Combinational logic
+ * Set combinational elements from current state
+ * and other combinational elements.
+ * Have to be careful to do this in right order!
+ */
+void
+update_ebox(KL10 *kl)
+{
+	update_cram(kl);
+	// TODO: decode everything here
+	kl->cra_adr_dbg = kl->cra_adr;	// remember where we fetched from for prining
+	kl->cra_adr = kl->cram_j;	// TODO
+
+	/* Data path */
+	update_fm(kl);
+	update_sh(kl);
+	update_vma_held_or_pc(kl);
+	update_adx(kl);
+	/* depends on:
+	 *  adx carry
+	 *  vma_held_or_pc
+	 *  fm */
+	update_ad(kl);
+	/* depends on:
+	 * pi */
+	// update_vma_ad(kl);	// done by load_vma
+	update_scad(kl);
+}
+
+/*
+ * Sequential logic
+ * Here we do our conceptional clock tick.
+ * Set next state of clocked elements
+ * from current state and combinational logic.
+ */
+void
+tick_mbox(KL10 *kl)
+{
+	trace("MBox tick\n");
+}
+
+void
+tick_edp(KL10 *kl)
+{
+	trace("EBox EDP tick\n");
+	load_ar(kl);
+	load_arx(kl);
+	load_br(kl);
+	load_brx(kl);
+	load_mq(kl);
+}
+
+void
+tick_crm(KL10 *kl)
+{
+	trace("EBox CRM tick\n");
+
+	kl->n.cram = kl->cram[kl->cra_adr];
+}
+
+void
+tick_ctl(KL10 *kl)
+{
+	trace("EBox CTL tick\n");
+
+	/* VMA */
+	load_pc(kl);
+	load_vma(kl);
+	load_vma_held(kl);
+	load_prev_sec(kl);
+
+	/* SCD */
+	load_sc_fe(kl);
+	load_pc_flags(kl);
+
+	/* TODO: APR, CON, MCL, IR */
+}
+
+/* TODO: remove this perhaps? */
 void
 reset(KL10 *kl)
 {
@@ -1095,228 +1278,62 @@ reset(KL10 *kl)
 	memset(&kl->n.cram, 0, sizeof(Cword));
 	kl->n.fe = 0;
 
+	kl->n.sc = 0;
+
+	kl->n.pc_flags &= ~(FLG_USER|FLG_USER_IOT|FLG_PUBLIC);
+	kl->n.scd_private_instr = 1;
+
 	/* TODO */
 
 	kl->c = kl->n;
 }
 
+/* This is a sketch of the general way we execute */
 void
-tick(KL10 *kl)
+clocktest(KL10 *kl)
 {
-	kl->c = kl->n;
-}
+	#define T 0
 
-void
-test(KL10 *kl)
-{
-	int i, j;
-	for(i = 0; i < 8; i++)
-		for(j = 0; j < 16; j++)
-			kl->fastmem[i*16+j] = 0123456700000 | i<<9 | j;
+	int mticks;
+	int eticks;
+	int ebox_sync;
+	int ebox_en;
+	int t;
+	int waiting;
 
-	kl->shm_instr_format = 1;
+	waiting = 0;
+	t = T;
+	ebox_en = 0;
+	eticks = 0;
+	for(mticks = 0; mticks < 100; mticks++){
+		tick_mbox(kl);
+		if(ebox_en){
+			eticks++;
+			update_ebox(kl);
+			tick_crm(kl);
+			tick_edp(kl);
+			tick_ctl(kl);
 
-	kl->cram_ad = 006;
-	kl->cram_ada = 0;
-	kl->cram_adb = 2;
+	printcram(kl);
+	printdp(kl);
 
-	kl->n.ar = 0400123012300;
-	kl->n.br = 0001234333000;
-	kl->n.arx = 0400000012300;
-	kl->n.brx = 0400000000000;
-
-	kl->ctl_adx_cry_36 = 0;
-	kl->ctl_ad_long = 0;
-	kl->ctl_inh_cry_18 = 0;
-	kl->ctl_gen_cry_18 = 0;
-	tick(kl);
-	update_adx(kl);
-	update_ad(kl);
-
-	printf("AR: %012lo, BR: %012lo\n", kl->c.ar, kl->c.br);
-	printf("AD: %012lo\n", kl->ad);
-	printf("ARX: %012lo, BRX: %012lo\n", kl->c.arx, kl->c.brx);
-	printf("ADX: %012lo\n", kl->adx);
-	printf("\n");
-
-
-	kl->ebus = 0665544332211;
-
-	kl->ctl_ar_00_08_load = 1;
-	kl->ctl_ar_09_17_load = 1;
-	kl->ctl_arr_load = 1;
-	kl->ctl_ar_00_11_clr = 0;
-	kl->ctl_ar_12_17_clr = 0;
-	kl->ctl_arr_clr = 0;
-	kl->ctl_arl_sel = 7;
-	kl->ctl_arr_sel = 7;
-	tick(kl);
-	load_ar(kl);
-
-	printf("AR: %012lo, BR: %012lo\n", kl->c.ar, kl->c.br);
-	printf("AD: %012lo\n", kl->ad);
-	printf("ARX: %012lo, BRX: %012lo\n", kl->c.arx, kl->c.brx);
-	printf("ADX: %012lo\n", kl->adx);
-	printf("\n");
-
-
-	kl->adx = 0;
-	kl->n.mq = 0123456112233;
-	kl->ctl_mqm_en = 1;
-	kl->ctl_mqm_sel = 0;
-	kl->ctl_mq_sel = 2;
-	tick(kl);
-	load_mq(kl);
-	printf("MQ: %012lo\n", kl->n.mq);
-	printf("\n");
-
-	kl->n.pc = 0654321;
-	kl->n.vma = 012123456;
-	kl->n.vma_prev_sec = 0;
-	kl->mcl_vma_inc = 1;
-	kl->cram_num = 0777;
-	kl->con_vma_sel = 3;
-	kl->mcl_vmax_en = 1;
-	kl->mcl_vmax_sel = 2;
-	kl->mcl_vma_fm_ad = 0;
-	kl->cram_cond = COND_VMA_FM_NUM;
-	tick(kl);
-	load_vma(kl);
-	printf("VMA: %08o\n", kl->n.vma);
-	printf("\n");
-
-	kl->ctl_load_pc = 1;
-	tick(kl);
-	load_pc(kl);
-	printf("PC: %08o\n", kl->n.pc);
-	printf("\n");
-
-	kl->n.ir = 0000740;
-	kl->n.arx = 0170017000000;
-	kl->n.apr_prev_block = 3;
-	kl->n.apr_current_block = 4;
-	kl->mcl_xr_previous = 1;
-	kl->cram_fm_adr_sel = 2;
-	kl->shm_instr_format = 0;
-	tick(kl);
-	update_fm(kl);
-	printf("FM: %012lo\n", kl->fm);
-	printf("\n");
-
-	kl->n.ar = 0123456654321;
-	kl->n.arx = 0112233445566;
-	kl->n.sc = 6;
-	kl->cram_sh_armm_sel = 0;
-	tick(kl);
-	update_sh(kl);
-	printf("SH: %012lo\n", kl->sh);
-	printf("\n");
-
-	kl->n.fe = 01777;
-	kl->n.sc = 01321;
-	kl->n.ar = 077451600321;
-	kl->cram_num = 01123;
-	kl->cram_scada_sel = 3;
-	kl->cram_scadb_sel = 2;
-	kl->cram_scad_sel = 7;
-	tick(kl);
-	update_scad(kl);
-	printf("SCAD: %04o\n", kl->scad);
-
-	kl->scad = 01111;
-	kl->n.sc = 01234;
-	kl->n.fe = 03432;
-	kl->cram_sc_sel = 1;
-	kl->cram_spec = SPEC_SCM_ALT;
-	kl->cram_fe_load = 0;
-	kl->cram_cond = COND_FE_SHRT;
-	tick(kl);
-	load_sc_fe(kl);
-	printf("SC: %04o FE: %04o\n", kl->n.sc, kl->n.fe);
-
-
-	kl->vma_in = 077777777;
-	kl->cram_num = 0777;
-	kl->scad = 0321;
-	kl->c.ar = 0701200000000;
-	kl->cram_sh_armm_sel = 3;
-	load_ar(kl);
-
-/*
-	int i, j;
-	kl->n.ar = 0;
-	for(i = 0; i < 4; i++){
-		kl->n.br = 0;
-		for(j = 0; j < 4; j++){
-			tick(kl);
-			update_adx(kl);
-			update_ad(kl);
-			printf("%o + %o = %02o; %d %d %d\n",
-				kl->n.ar>>34 & 3,
-				kl->n.br>>34 & 3,
-				kl->n.ad>>34 & 017,
-				kl->n.ad_cry_n2,
-				kl->n.ad_overflow,
-				kl->n.ad_cry_1);
-			kl->n.br += 0200000000000;
+			t = T;
+			ebox_en = 0;
 		}
-		kl->n.ar += 0200000000000;
-	}
-*/
 
-	
-}
+		/* Advance time */
+		kl->c = kl->n;
 
-void
-dumpdram(KL10 *kl)
-{
-	static char *A[8] = {
-		"I   ",	// 0
-		"I-PF",	// 1
-		"NA  ",	// 2
-		"W   ",	// 3
-		"R   ",	// 4
-		"R-PF",	// 5
-		"RW  ",	// 6
-		"RPW ",	// 7
-	};
-	static char *B[8] = {
-		"-     ",	// 0
-		"DBL AC",	// 1	DBL AC
-		"DBL B ",	// 2	DBL B
-		"S     ",	// 3	S
-		"NA4   ",	// 4
-		"AC    ",	// 5	AC
-		"M     ",	// 6	M
-		"B     ",	// 7	B
-	};
-	int i;
-	/* regular instructions */
-	for(kl->n.ir = 0; kl->n.ir < 0700000; kl->n.ir += 01000){
-		kl->dr_adr = getdradr(kl->n.ir);
-		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
-			A[kl->dram_a],
-			B[kl->dram_b],
-			kl->dram_j);
-	}
-	/* jrst */
-	for(kl->n.ir = 0254000; kl->n.ir < 0255000; kl->n.ir += 040){
-		kl->dr_adr = getdradr(kl->n.ir);
-		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
-			A[kl->dram_a],
-			B[kl->dram_b],
-			kl->dram_j);
-	}
-	/* IO */
-	for(kl->n.ir = 0700000; kl->n.ir < 01000000; kl->n.ir += 040){
-		kl->dr_adr = getdradr(kl->n.ir);
-		fetchdr(kl);
-		printf("%06o %03o: A:%s B:%s J:%o\n", kl->n.ir, kl->dr_adr,
-			A[kl->dram_a],
-			B[kl->dram_b],
-			kl->dram_j);
+		if(eticks >= 3)
+			break;
+
+		if(ebox_sync){
+			ebox_en = 1;
+			ebox_sync = 0;
+		}else if(t == 0 && !waiting)
+			ebox_sync = 1;
+		if(t)
+			t--;
 	}
 }
 
@@ -1380,14 +1397,16 @@ main()
 
 	kl10 = malloc(sizeof(KL10));
 	memset(kl10, 0, sizeof(KL10));
-	reset(kl10);
 
 	loaducode(kl10, "ucode/u1.txt");
-//	dumpdram(kl10);
 
-	step(kl10);
-	step(kl10);
-//	test(kl10);
+	reset(kl10);
+	dotrace = 1;
+	kl10->n.pc_flags = 0777740000000;
+//	kl10->n.pc_flags = 0000000000000;
+//	kl10->n.ar = 0777777000100;
+	kl10->n.ar = 0000000000100;
+	clocktest(kl10);
 
 	return 0;
 }

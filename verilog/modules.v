@@ -1,26 +1,51 @@
+// input 50mhz, output ~60hz
+module clk60hz(
+	input wire clk,
+	output wire outclk
+);
+	reg [19:0] cnt = 0;
+	assign outclk = cnt == 833333;
+	always @(posedge clk)
+		if(outclk)
+			cnt <= 0;
+		else
+			cnt <= cnt + 20'b1;
+endmodule
+
+// input 50mhz, output 63.3hz
+module clk63_3hz(
+	input wire clk,
+	output wire outclk
+);
+	reg [19:0] cnt = 0;
+	assign outclk = cnt == 789900;
+	always @(posedge clk)
+		if(outclk)
+			cnt <= 0;
+		else
+			cnt <= cnt + 20'b1;
+endmodule
+
+// input 50mhz, output 50khz
+module clk50khz(
+	input wire clk,
+	output wire outclk
+);
+	reg [9:0] cnt = 0;
+	assign outclk = cnt == 1000;
+	always @(posedge clk)
+		if(outclk)
+			cnt <= 0;
+		else
+			cnt <= cnt + 10'b1;
+endmodule
+
 /* A B138 full adder with carry insert and carry kill */
 module adr(input a, input b, input cin, input cins, input ckill, output s, output cout);
 	wire c = cin | cins;
 	assign s = a ^ b ^ c;
 	assign cout = (a & b | (a^b)&c) & ~ckill;
 endmodule
-
-
-module dly1us(input clk, input reset, input in, output p);
-	reg [6:0] r;
-	always @(posedge clk or posedge reset) begin
-		if(reset)
-			r <= 0;
-		else begin
-			if(r)
-				r <= r + 7'b1;
-			if(in)
-				r <= 1;
-		end
-	end
-	assign p = r == 102;
-endmodule
-
 
 
 /* Note: pa and pg are exactly the same! */
@@ -37,43 +62,34 @@ module pg(input clk, input reset, input in, output p);
 	assign p = x[0] & !x[1];
 endmodule
 
-module pg36(input clk, input reset, input [0:35] in, output [0:35] p);
-	reg [0:35] a, b;
-	always @(posedge clk or posedge reset)
-		if(reset) begin
-			a <= 0;
-			b <= 0;
-		end else begin
-			a <= in;
-			b <= a;
-		end
-	assign p = a & ~b;
-endmodule
-
-
 /* Pulse Amplifier
  * Essentially an edge detector */
-module pa(input clk, input reset, input in, output p);
+module pa(input wire clk, input wire reset, input wire in, output wire p);
 	reg [1:0] x;
+	reg [1:0] init = 0;
 	always @(posedge clk or posedge reset)
 		if(reset)
-			x <= 0;
-		else
+			init <= 0;
+		else begin
 			x <= { x[0], in };
-	assign p = x[0] & !x[1];
+			init <= { init[0], 1'b1 };
+		end
+	assign p = (&init) & x[0] & !x[1];
 endmodule
 
 /* Diode Capacitor Diode gate.
  * This shouldn't delay the output ideally, but it does */
 module dcd(input clk, input reset, input p, input l, output q);
 	reg [1:0] x;
+	reg [1:0] init = 0;
 	always @(posedge clk or posedge reset)
 		if(reset)
-			// make sure we first have to go down once before detect rising edges
-			x <= 2'b11;
-		else
+			init <= 0;
+		else begin
 			x <= { x[0], p };
-	assign q = l & x[0] & !x[1];
+			init <= { init[0], 1'b1 };
+		end
+	assign q = l & (&init) & x[0] & !x[1];
 endmodule
 
 /* Pulse Amplifier behind a DCD
@@ -104,4 +120,22 @@ module pa_dcd4(input clk, input reset,
 	dcd dcd3(clk, reset, p3, l3, q3);
 	dcd dcd4(clk, reset, p4, l4, q4);
 	assign q = q1 | q2 | q3 | q4;
+endmodule
+
+// TODO: check the purpose of this
+
+/* "bus driver", 40ns delayed pulse */
+module bd(input clk, input reset, input in, output p);
+	reg [2:0] r;
+	always @(posedge clk or posedge reset) begin
+		if(reset)
+			r <= 0;
+		else begin
+			if(r)
+				r <= r + 3'b1;
+			if(in)
+				r <= 1;
+		end
+	end
+	assign p = r == 2;
 endmodule

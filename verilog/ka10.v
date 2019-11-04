@@ -2,8 +2,6 @@ module ka10(
 	input wire clk,
 	input wire reset,
 
-	input wire sw_power,
-
 	// keys
 	input wire key_stop_sw,
 	input wire key_exa_sw,
@@ -34,40 +32,186 @@ module ka10(
 	output wire membus_rd_rq,
 	output wire membus_wr_rq,
 	output wire membus_rq_cyc,
-	input wire membus_addr_ack,	// pulse
-	input wire membus_rd_rs,	// pulse
 	output wire membus_wr_rs,	// pulse
-	output wire [18:35] membus_ma,
-	output wire [0:35] membus_mb_out,
-	input wire [0:35] membus_mb_in,
+	output wire [21:35] membus_ma,
+	output wire [18:21] membus_sel,
 	output wire membus_fmc_select,
+	output wire [0:35] membus_mb_out,
+	input  wire membus_addr_ack,	// pulse
+	input  wire membus_rd_rs,	// pulse
+	input  wire [0:35] membus_mb_in,
 	// not implemented:
 	// ouput wire parity,	// pulse
 	// input wire ign_parity,	// pulse
 
 	// IO bus
+	output wire iobus_iob_poweron,	// actually unused on 10
 	output wire iobus_iob_reset,	// pulse
-	input wire iobus_iob_dr_split,
-	output wire [3:9] iobus_ios,
 	output wire iobus_datao_clear,	// pulse
 	output wire iobus_datao_set,	// pulse
 	output wire iobus_cono_clear,	// pulse
 	output wire iobus_cono_set,	// pulse
-	output wire iobus_iob_datai,
-	output wire iobus_iob_coni,
-	output wire iobus_rdi_pulse,	// pulse
-	input wire iobus_rdi_data,
+	output wire iobus_iob_fm_datai,
+	output wire iobus_iob_fm_status,
+	output wire iobus_rdi_pulse,	// pulse, unused on 6
+	output wire [3:9]  iobus_ios,
 	output wire [0:35] iobus_iob_out,
-	input wire [1:7] iobus_pi,
-	input wire [0:35] iobus_iob_in,
+	input  wire [1:7]  iobus_pi_req,
+	input  wire [0:35] iobus_iob_in,
+	input  wire iobus_iob_dr_split,
+	input  wire iobus_rdi_data,	// unused on 6
+
+	// operator panel
+	output wire ind_run,
+	output wire ind_pi_on,
+	output wire pwr_on_ind,
+	output wire ind_prog_stop,
+	output wire ind_user,
+	output wire ind_mem_stop,
+	output wire [1:7] ind_pih,
+	output wire [1:7] ind_pir,
+	output wire [1:7] ind_pio,
+	output wire [1:7] ind_iob_req,
+	output wire [18:35] ind_pc_reg,
+	output wire [0:17] ind_ir_reg,
+	output wire [18:35] ind_ma_reg,
+	output wire [0:35] ind_mi_reg,
+	output wire ind_mi_prog,
+
+	// indicators
+	output wire [6:0] ind_ar,
+	output wire [0:35] ind_ar_reg,
+	output wire [0:35] ind_br_reg,
+	output wire [0:35] ind_mq_reg,
+	output wire [10:0] ind_ad,
+	output wire [0:35] ind_ad_reg,
+	output wire ind_sc,
+	output wire [0:8] ind_sc_reg,
+	output wire [0:8] ind_fe_reg,
+	output wire [7:0] ind_scad,
+	output wire [0:8] ind_scad_reg,
+	output wire [2:0] ind_ir,
+	output wire [11:0] ind_key,
+	output wire [11:0] ind_opr,
+	output wire [5:0] ind_fetch,
+	output wire [4:0] ind_store,
+	output wire [32:35] ind_fma,
+	// { [18:25], [18:25] }
+	output wire [15:0] ind_pr_reg,
+	output wire [15:0] ind_rl_reg,
+	output wire [15:0] ind_rla_reg,
+	output wire [9:0] ind_mem,
+	output wire [4:0] ind_ex,
+	output wire [1:0] ind_pi,
+	output wire [1:0] ind_byte,
+	output wire [13:0] ind_cpa,
+	output wire [15:0] ind_misc,
+	output wire [2:0] ind_nr,
+	output wire [1:0] ind_as,
 
 	// maintenance panel:
-	input sc_stop_sw,
-	input fm_enable_sw,
-	input key_repeat_bypass_sw,
-	input mi_prog_dis_sw,
-	input wire [3:9] rdi_sel
+	input wire sw_power,
+	// TODO: repeat
+	input wire sc_stop_sw,
+	input wire fm_enable_sw,
+	input wire key_repeat_bypass_sw,
+	input wire mi_prog_dis_sw,
+	input wire [3:9] rdi_sel,
+
+
+	// 36 bit Avalon Slave for fast mem
+	input wire [17:0] s_address,
+	input wire s_write,
+	input wire s_read,
+	input wire [35:0] s_writedata,
+	output wire [35:0] s_readdata,
+	output wire s_waitrequest
 );
+
+	assign ind_run = run;
+	assign ind_pi_on = pi_act;
+	assign ind_prog_stop = key_prog_stop;
+	assign ind_user = ex_user;
+	assign ind_mem_stop = mc_stop;
+	assign ind_pih = pih;
+	assign ind_pir = pir;
+	assign ind_pio = pio;
+	assign ind_iob_req = iobus_pi_req;
+	assign ind_pc_reg = pc;
+	assign ind_ir_reg = ir;
+	assign ind_ma_reg = ma;
+	assign ind_mi_reg = mi;
+	assign ind_mi_prog = mi_prog;
+
+
+	assign ind_ar = {
+		ar_ov_flag,
+		ar_cry0_flag, ar_cry1_flag, ar_fov,
+		ar_fxu, ar_dck, ar_ov_cond };
+	assign ind_ar_reg = ar;
+	assign ind_br_reg = br;
+	assign ind_mq_reg = mq;
+	assign ind_ad = {
+		ad_ar_p_en, ad_ar_m_en,
+		ad_br_p_en, ad_br_m_en, ad_cry_36,
+		ad_cry_ins, ad_p1_lh, ad_m1_lh,
+		ad_md_p, ad_md_m, ad_cond };
+	assign ind_ad_reg = ad;
+	assign ind_sc = sc_stop;
+	assign ind_sc_reg = sc;
+	assign ind_fe_reg = fe;
+	assign ind_scad = {
+		scad_data0, scad_data1,
+		scad_sc_comp, scad_inc_en, scad_br_en,
+		scad_ar6_11_en, scad_200_en, scad_33_en };
+	assign ind_scad_reg = scad;
+	assign ind_ir = { ir_uuo, ir_lt_en, ir_rt_en };
+	assign ind_key = {
+		key_f1, key_sync_rq, key_sync,
+		key_reset, key_examine, key_ex_nxt,
+		key_deposit, key_dep_nxt, key_rdi,
+		key_start, key_execute, key_cont };
+	assign ind_opr = {
+		if0, af2, ff1,
+		ff2, ff4, e_uuof,
+		e_xctf, e_long, ef0_long,
+		sf1, sf6, sf8 };
+	assign ind_fetch = {
+		fce, fce_pse, fac_inh,
+		fac2, fcc_aclt, fcc_acrt };
+	assign ind_store = {
+		sce, st_inh,
+		sac2, sac_inh, sac_eq_0 };	// TODO? invert SAC=0?
+	assign ind_fma = fma;
+	assign ind_pr_reg = { prb, pr };
+	assign ind_rl_reg = { rlb, rl };
+	assign ind_rla_reg = { rlc, rla };
+	assign ind_mem = {
+		mc_rq,
+		mc_rd, mc_wr, mc_req_cyc,
+		mc_split_cyc_sync, mc_fm_en, mai_fma_sel,
+		fma_ac, fma_ac2, fma_xr };
+	assign ind_ex = {
+		ex_ill_op, ex_pi_sync,
+		ex_mode_sync, ex_iot_user, ex_rel };
+	assign ind_pi = { pi_ov, pi_cyc };
+	assign ind_byte = { lb_byte_load, db_byte_dep };
+	assign ind_cpa = {
+		cpa_pwr_fail, cpa_adr_break,
+		cpa_par_err, cpa_par_enb, cpa_pdl_ov,
+		cpa_mem_prot_flag, cpa_non_ex_mem, cpa_clk_en,
+		cpa_clk_flag, cpa_fov_en, cpa_ar_ov_en,
+		cpa_pia };
+	assign ind_misc = {
+		bltf1, mpf1, mpf2,
+		msf1, byf4, byf5,
+		byf6, dsf1, dsf7,
+		faf1, fdf1, fdf3,
+		key_rim, iot_f1, iot_go };
+	assign ind_nr = { nr_sh_rt_cond, nr_normal, nr_round };
+	assign ind_as = { as_eq_rla, as_eq_fma };
+
+
 
 	// TODO: This is used for a second processor with the same memory
 	wire ma_trap_offset = 0;
@@ -82,18 +226,15 @@ module ka10(
 	assign membus_wr_rq = mc_wr;
 	assign membus_rq_cyc = mc_req_cyc;
 	assign membus_wr_rs = mc_wr_rs;
-	assign membus_ma = mai;
+	assign membus_sel = mai[18:21];
+	assign membus_ma = mai[21:35];
 	assign membus_fmc_select = 0;
 	assign membus_mb_out =
 		mc_membus_fm_ar1 ? ar :
 		0;
-	wire [0:35] membus_pulse;
-	pg36 membus_pg(.clk(clk), .reset(reset),
-		.in(membus_mb_in),
-		.p(membus_pulse));
-
 
 	/* IObus */
+	assign iobus_iob_poweron = sw_power;	// ???
 	assign iobus_iob_reset = iot_reset;	// pulse
 	wire iob_dr_split = iobus_iob_dr_split;
 	assign iobus_ios = ir[3:9];
@@ -101,8 +242,8 @@ module ka10(
 	assign iobus_datao_set = iot_datao_set;	// pulse
 	assign iobus_cono_clear = iot_cono_clr;	// pulse
 	assign iobus_cono_set = iot_cono_set;	// pulse
-	assign iobus_iob_datai = iob_datai;
-	assign iobus_iob_coni = iob_status;
+	assign iobus_iob_fm_datai = iob_datai;
+	assign iobus_iob_fm_status = iob_status;
 	assign iobus_rdi_pulse = iot_rdi_pulse;	// pulse
 //	input wire iobus_rdi_data,
 	assign iobus_iob_out = iob_fm_ar ? ar :
@@ -110,7 +251,7 @@ module ka10(
 		pi_status ? pi_iob :
 		0;
 
-	wire [1:7] iob_pi = iobus_pi | {7{ cpa_req_enable}}&cpa_req;
+	wire [1:7] iob_pi = iobus_pi_req | {7{ cpa_req_enable}}&cpa_req;
 	wire [0:35] iob = iobus_iob_in | iobus_iob_out;
 	wire iob_status = iot_data_xfer & (iot_consx | iot_coni);
 	wire iob_datai = iot_datai & iot_data_xfer;
@@ -124,6 +265,11 @@ module ka10(
 
 
 	/* MR */
+	// TODO: do this properly
+	// mr_pwr_clr_enb;
+	// wire pwr_on_ind = ~mr_pwr_clr_enb;
+	assign pwr_on_ind = sw_power;
+
 	wire mr_pwr_clr;
 	wire mr_start;
 	wire mr_clr;
@@ -259,11 +405,7 @@ module ka10(
 		.p1(key_stop_sw), .l1(1'b1),
 		.p2(kt0), .l2(key_reset & run),
 		.q(kst1));
-	pa_dcd2 key_pa17(.clk(clk), .reset(reset),
-		.p1(key_stop_sw), .l1(1'b1),
-		.p2(kt0), .l2(key_reset & run),
-		.q(kst1));
-	pa_dcd key_pa18(.clk(clk), .reset(reset),
+	pa_dcd key_pa17(.clk(clk), .reset(reset),
 		.p(~key_at_inh), .l(key_reset),
 		.q(kst2));
 
@@ -274,10 +416,10 @@ module ka10(
 	wire kct0_D;
 	wire kst1_D;
 	// SIM: this delay is 30ms really, to debounce the keys
-	ldly0_2us key_dly1(.clk(clk), .reset(reset),
+	gdly0_2us key_dly1(.clk(clk), .reset(reset),
 		.p(key_manual), .l(1'b1),
 		.q(key_manual_D));
-	ldly1us key_dly2(.clk(clk), .reset(reset),
+	gdly1us key_dly2(.clk(clk), .reset(reset),
 		.p(key_fcn_strobe), .l(1'b1),
 		.q(key_fcn_strobe_D));
 	dly165ns key_dly3(.clk(clk), .reset(reset), .in(kt0a), .p(kt0a_D));
@@ -289,16 +431,16 @@ module ka10(
 	dly90ns key_dly9(.clk(clk), .reset(reset), .in(knt3), .p(knt3_D));
 	dly165ns key_dly10(.clk(clk), .reset(reset), .in(kct0), .p(kct0_D));
 	// TODO: this delay has to be adjustable!
-	ldly1us key_dly11(.clk(clk), .reset(reset),
+	gdly1us key_dly11(.clk(clk), .reset(reset),
 		.p(key_rept_in), .l(1'b1),
 		.q(key_rept_dly));
-	ldly100us key_dly12(.clk(clk), .reset(reset),
+	gdly100us key_dly12(.clk(clk), .reset(reset),
 		.p(kst1), .l(1'b1),
 		.q(kst1_D));
-	ldly100us key_dly13(.clk(clk), .reset(reset),
+	gdly100us key_dly13(.clk(clk), .reset(reset),
 		.p(key_at_inh_in), .l(1'b1),
 		.q(key_at_inh));
-	ldly1_5us key_dly14(.clk(clk), .reset(reset),
+	gdly1_5us key_dly14(.clk(clk), .reset(reset),
 		.p(kt0), .l(key_rdi & ~run),
 		.q(key_rdi_dly));
 
@@ -979,6 +1121,9 @@ module ka10(
 		.p(mc_adr_break_set), .l(1'b1),
 		.q(cpa_adr_break_set));
 
+	wire cpa_pwr_clk;
+	clk60hz cpa_clk(.clk(clk), .outclk(cpa_pwr_clk));
+
 	always @(posedge clk) begin
 		if(mr_start) begin
 			cpa_pwr_fail <= 0;
@@ -1024,6 +1169,9 @@ module ka10(
 			if(iob[20] &  cpa_par_enb) cpa_par_enb <= 0;
 			if(iob[21] & ~cpa_par_enb) cpa_par_enb <= 1;
 		end
+
+		if(~key_sing_inst & cpa_pwr_clk)
+			cpa_clk_flag <= 1;
 	end
 
 
@@ -1134,7 +1282,8 @@ module ka10(
 		et0 & hwt_arrt_clr_et0;
 	wire ar_sh_lt =
 		sct3 & (db_byte_dep | sr_go_left | dsf1) |
-		nrt2;
+		nrt2 |
+		et2 & ir_idiv;	// later addition
 	wire ar_sh_rt =
 		sct3 & (lb_byte_load | sr_go_right | msf1 | faf1) |
 		nrt10 | nlt2 |
@@ -1289,8 +1438,6 @@ module ka10(
 
 	always @(posedge clk) begin: arctl
 		integer i;
-		if(ar_fm_fm1)
-			ar <= ar | fm;
 		if(arlt_fm_ir1)
 			ar[0:12] <= ar[0:12] | ir[0:12];
 		if(ar_fm_iob1)
@@ -1301,8 +1448,6 @@ module ka10(
 			ar[0:17] <= 0;
 		if(arrt_clr)
 			ar[18:35] <= 0;
-		if({36{mc_rd}} & membus_pulse)
-			ar <= ar | membus_pulse;
 		if(arlt_fm_arrtJ)
 			ar[0:17] <= ar[18:35];
 		if(arrt_fm_arltJ)
@@ -1312,9 +1457,9 @@ module ka10(
 		if(ar_sh_rt)
 			ar <= { ar0_sh_rt_inp, ad[0:34] };
 		if(arlt_fm_flagsJ) begin
-			ar[0:6] = { ar_ov_flag, ar_cry0_flag, ar_cry1_flag, ar_fov,
+			ar[0:6] <= { ar_ov_flag, ar_cry0_flag, ar_cry1_flag, ar_fov,
 				byf6, ex_user, ex_iot_user };
-			ar[11:12] = { ar_fxu, ar_dck };
+			ar[11:12] <= { ar_fxu, ar_dck };
 		end
 		if(arrt_fm_pcJ)
 			ar[18:35] <= pc;
@@ -1338,7 +1483,7 @@ module ka10(
 		end
 
 		if(ar0_5_fm_scad3_8J)
-			ar[0:5] = scad[3:8];
+			ar[0:5] <= scad[3:8];
 		if(ar1_8_fm_scad1_8J) begin
 			ar[1:8] <= scad[1:8];
 			if(ari_dfn_clr)
@@ -1347,7 +1492,13 @@ module ka10(
 				ar[0] <= 1;
 		end
 		if(ar1_8_fm_ar0J)
-			ar[1:8] = {8{ar[0]}};
+			ar[1:8] <= {8{ar[0]}};
+
+		// ORDER important
+		if(mc_rd)
+			ar <= ar | membus_mb_in;
+		if(ar_fm_fm1)
+			ar <= ar | fm;
 	end
 
 	/* ARF */
@@ -1357,7 +1508,7 @@ module ka10(
 	reg ar_fov;
 	reg ar_fxu;
 	reg ar_dck;
-	reg ar_fxu_hold;
+	reg ar_fxu_hold;	// later addition
 	wire ar_ov_cond = ad_cry[0] ^ ad_cry[1];
 	wire ar0_XOR_ar1 = ar[0] ^ ar[1];
 	wire arf_flags_fm_brJ = et0 & ir_jrst & ir[11];
@@ -1630,7 +1781,7 @@ module ka10(
 	assign ad_cry[36] = ad_cry_36;
 	genvar i;
 	generate
-		for(i = 0; i < 36; i = i + 1) begin
+		for(i = 0; i < 36; i = i + 1) begin : adgen
 			adr ad_adr(ad_ar_inp[i], ad_br_inp[i],
 				ad_cry[i+1], ad_cry_ins, ad_cry_kill[i],
 				ad[i], ad_cry[i]);
@@ -1923,14 +2074,16 @@ module ka10(
 	wire ir_div_OR_fdvl = ir_div | ir_fdvl;
 
 	always @(posedge clk) begin
+		// ORDER important
+		if(ir_lt_en)
+			ir[0:12] <= ir[0:12] | membus_mb_in[0:12];
+		if(ir_rt_en)
+			ir[13:17] <= ir[13:17] | membus_mb_in[13:17];
+
 		if(ir_lt_clr)
 			ir[0:12] <= 0;
 		if(ir_rt_clr)
 			ir[13:17] <= 0;
-		if(ir_lt_en & (| membus_pulse[0:12]))
-			ir[0:12] <= ir[0:12] | membus_pulse[0:12];
-		if(ir_rt_en & (| membus_pulse[13:17]))
-			ir[13:17] <= ir[13:17] | membus_pulse[13:17];
 
 		if(it1) begin
 			ir_lt_en <= 0;
@@ -1966,7 +2119,7 @@ module ka10(
 	wire hwt_mem = ir_hwt & ir[7:8] == 2;
 	wire hwt_self = ir_hwt & ir[7:8] == 3;
 	wire hwt_e_long = hwt_3_let & ir[6] & ~ir[7];
-	wire hwt_sce = hwt_mem & ir[4];
+	wire hwt_sce = hwt_mem & ~hwt_3_let;
 
 	wire hwt_e_test =
 		(ir[3]^ir[6]) & ar[18] |
@@ -2198,16 +2351,16 @@ module ka10(
 		.p(iot_reset));
 
 	wire iot_t4_D;
-	ldly1us iot_dly1(.clk(clk), .reset(reset),
+	gdly1us iot_dly1(.clk(clk), .reset(reset),
 		.p(iot_t0), .l(1'b1),
 		.q(iot_initial_setup_dly));
-	ldly2us iot_dly2(.clk(clk), .reset(reset),
+	gdly2us iot_dly2(.clk(clk), .reset(reset),
 		.p(iot_t0), .l(1'b1),
 		.q(iot_restart_dly));
-	ldly1_5us iot_dly3(.clk(clk), .reset(reset),
+	gdly1_5us iot_dly3(.clk(clk), .reset(reset),
 		.p(iot_t2), .l(1'b1),
 		.q(iot_data_dly));
-	ldly2_5us iot_dly4(.clk(clk), .reset(reset),
+	gdly2_5us iot_dly4(.clk(clk), .reset(reset),
 		.p(iot_t3), .l(1'b1),
 		.q(iot_reset_dly));
 	dly190ns iot_dly5(.clk(clk), .reset(reset),
@@ -2255,7 +2408,7 @@ module ka10(
 		if(sc_fp_setup) begin
 			sc[0:7] <= sc[0:7] | 9'o744>>1;
 			if(~ir[5])
-				sc[8] = 1;
+				sc[8] <= 1;
 		end
 		if(sc_fm_fe1)
 			sc <= sc | fe;
@@ -3074,7 +3227,7 @@ module ka10(
 	dly65ns mc_dly6(.clk(clk), .reset(reset), .in(mc_rdwr_rs), .p(mc_rdwr_rs_D));
 	dly65ns mc_dly7(.clk(clk), .reset(reset), .in(mc_rst0), .p(mc_rst0_D));
 	dly265ns mc_dly8(.clk(clk), .reset(reset), .in(mc_illeg_adr), .p(mc_illeg_adr_del));
-	ldly100us mc_dly9(.clk(clk), .reset(reset),
+	gdly100us mc_dly9(.clk(clk), .reset(reset),
 		.p(mc_rq_pulse), .l(1'b1),
 		.q(mc_rq_pulse_D3));
 
@@ -3122,7 +3275,7 @@ module ka10(
 	end
 
 	/* FM */
-	reg [0:35] fmem[0:16];
+	reg [0:35] fmem[0:15];
 	reg fma_xr;
 	reg fma_ac;
 	reg fma_ac2;
@@ -3179,7 +3332,12 @@ module ka10(
 			fma_ac <= 0;
 			fma_ac2 <= 1;
 		end
+
+		if(s_write)
+			fmem[s_address[3:0]] <= s_writedata;
 	end
 
+	assign s_readdata = fmem[s_address[3:0]];
+	assign s_waitrequest = 0;
 
 endmodule

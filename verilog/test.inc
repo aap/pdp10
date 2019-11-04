@@ -88,7 +88,7 @@ initial begin: meminit
 //	pdp10.mem0.core['o20] = Inst(`MOVN, 2, 0, 0, 0);
 //	pdp10.mem0.core['o20] = Inst(`MOVM, 2, 0, 0, 1);
 //	pdp10.mem0.core['o20] = Inst(`MOVM, 1, 0, 0, 2);
-//	pdp10.mem0.core['o20] = Inst(`MOVEM, 2, 0, 0, 1);
+	pdp10.mem0.core['o20] = Inst(`MOVEM, 2, 0, 0, 'o100);
 
 	// HWT tests
 //	pdp10.mem0.core['o20] = Inst(`HLL, 2, 0, 0, 1);

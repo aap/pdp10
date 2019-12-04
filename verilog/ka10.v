@@ -968,6 +968,7 @@ module ka10(
 		else if(pir_fm_iob1)
 			pir <= pir | iob[29:35];
 		else
+if(pih)
 			pir <= pir & ~pih;
 		if(pih_fm_pi_chrq)
 			pih <= pih | pi_req;
@@ -1858,7 +1859,7 @@ module ka10(
 	wire pc_inc_inh =
 		ir_xct | ir_uuo | iot_blk |
 		ir_blt | pi_cyc | key_pi_inh |
-		ir_134_7 & byf5;
+		ir_134_7 & ~byf5;
 	wire pc_cond_p =
 		ir[6:8] == 4 |			// A
 		~ir[6] & ir[7] & ad_eq_0 |	// E, LE; == 0
@@ -2463,12 +2464,12 @@ module ka10(
 		fat2 & scad[0] & ~ar0_eq_br0;
 	wire scad_sc_comp_setup =
 		nrt1 | nrt3 |
+		fpt0 & ar[0] |
 		fat2 & ~scad[0] & ~ar0_eq_br0 |
 		fat7;
 	wire scad_sc_p_br_setup =
 		ft9 & ir_dfn |
 		et0 & ir_fsc & ~ar[0] |
-		fpt0 & ar[0] |
 		fat1 & ~ar0_eq_br0 |
 		fat6;
 	wire scad_sc_m_br_setup =

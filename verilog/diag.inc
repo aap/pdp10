@@ -10,12 +10,13 @@ initial begin: meminit
 
 	pdp10.ka10.fmem[0] = 36'o777777_777777;
 	pdp10.ka10.fmem[1] = 36'o777777_000000;
-	pdp10.ka10.fmem[2] = 36'o456000_000654;
-	pdp10.ka10.fmem[3] = 36'o056000_000654;
+	pdp10.ka10.fmem[2] = 36'o201400000000;
+	pdp10.ka10.fmem[3] = 36'o606327501325;
 	pdp10.ka10.fmem[4] = 36'o000003_000111;
 	pdp10.ka10.fmem[5] = 36'o777776_000111;
+	pdp10.ka10.fmem[6] = 36'o777777_777777;
 	pdp10.ka10.fmem['o7] = 36'o777777_777777;
-	pdp10.ka10.fmem['o10] = 36'o000000_000000;
+	pdp10.ka10.fmem['o10] = 36'o000000_000001;
 	pdp10.ka10.fmem['o11] = 36'o000000_000001;
 	pdp10.ka10.fmem['o12] = 36'o000000_000002;
 	pdp10.ka10.fmem['o13] = 36'o400000_000000;
@@ -27,6 +28,9 @@ initial begin: meminit
 		pdp10.mem0.core[i] = pdp10.ka10.fmem[i];
 	end
 
+	pdp10.mem0.core['o42] = IoInst(`DATAO, 0, 0, 0, 0);
+
+
 	pdp10.mem0.core['o141] = 36'o000000000001;
 	pdp10.mem0.core['o142] = 36'o000000000002;
 	pdp10.mem0.core['o200] = 36'o777740000100;
@@ -34,12 +38,23 @@ initial begin: meminit
 	pdp10.mem0.core['o300] = 36'o123456111222;
 	pdp10.mem0.core['o002000] = 36'o006000001001;
 
+	pdp10.mem0.core['o1000] = 36'o001100000006;
+	pdp10.mem0.core['o1001] = 36'o111100000006;
+	pdp10.mem0.core['o1002] = 36'o221100000006;
+	pdp10.mem0.core['o1003] = 36'o331100000006;
 
-	pdp10.mem0.core['o20] = Inst(`IDIV, 'o13, 0, 0, 'o12);
+
+	pdp10.mem0.core['o20] = Inst(`LDB, 6, 0, 'o10, 'o1000);
 
 
 
 	pdp10.mem0.core['o21] = Inst(`JRST, 4, 0, 0, 'o21);
 	pdp10.mem0.core['o22] = Inst(`JRST, 4, 0, 0, 'o22);
 	pdp10.mem0.core['o200] = Inst(`JRST, 4, 0, 0, 'o200);
+end
+
+initial begin
+	#9250;
+	pdp10.ka10.pi_act <= 1;
+	pdp10.ka10.pir <= 7'b1000000;
 end
